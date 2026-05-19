@@ -1,0 +1,27 @@
+# SIIB — Solo PostgreSQL, para desarrollo nativo del frontend/backend.
+# Útil cuando corres la app con `npm run dev` directamente en tu máquina
+# y solo necesitas la BD dockerizada.
+#
+# Uso:
+#   docker compose -f docker-compose.db.yml up -d
+#   docker compose -f docker-compose.db.yml down
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: siib-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: siib
+      POSTGRES_PASSWORD: siib_dev
+      POSTGRES_DB: siib
+    ports:
+      - "5432:5432"
+    volumes:
+      - /home/floppi2/drive/siib_pgdata_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U siib -d siib"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+

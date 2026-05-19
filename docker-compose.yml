@@ -1,0 +1,55 @@
+# SIIB — Stack completo (PostgreSQL + aplicación Next.js)
+# Uso:
+#   docker compose up -d --build      # arranca todo
+#   docker compose logs -f app        # ver logs de la app
+#   docker compose exec app sh        # shell dentro del contenedor de la app
+#   docker compose down               # detener (preserva volúmenes)
+#   docker compose down -v            # detener y borrar volúmenes (RESET TOTAL)
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: siib-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-siib}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-siib_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-siib}
+    volumes:
+      - /home/floppi2/drive/siib_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-siib} -d ${POSTGRES_DB:-siib}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # Por seguridad NO publicamos 5432 al host en este stack.
+    # Si quieres conectarte con un cliente externo (DBeaver, psql), descomenta:
+    # ports:
+    #   - "5432:5432"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: siib-app:latest
+    container_name: siib-app
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-siib}:${POSTGRES_PASSWORD:-siib_dev}@postgres:5432/${POSTGRES_DB:-siib}?schema=public
+      AUTH_SECRET: "${AUTH_SECRET:?Falta AUTH_SECRET en .env (genera uno con: openssl rand -base64 32)}"
+      AUTH_TRUST_HOST: "true"
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      STORAGE_LOCAL_PATH: /app/storage/uploads
+      STORAGE_MAX_FILE_SIZE_MB: ${STORAGE_MAX_FILE_SIZE_MB:-20}
+      ALERTS_SCAN_TOKEN: ${ALERTS_SCAN_TOKEN:-cambia-este-token}
+      SEED_ON_BOOT: ${SEED_ON_BOOT:-true}
+      NODE_ENV: production
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    volumes:
+      # Persistencia de PDFs subidos
+      - /home/floppi2/drive/siib_uploads:/app/storage/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+
