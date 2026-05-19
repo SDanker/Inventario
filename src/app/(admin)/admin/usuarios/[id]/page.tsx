@@ -12,11 +12,12 @@ import { Field, Label } from "@/components/ui/label";
 import { Input, Select } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 
-async function updateUserAction(userId: string, formData: FormData) {
+async function updateUserAction(formData: FormData) {
   "use server";
   const user = await getSessionUser();
   if (!user) redirect("/login");
 
+  const userId = formData.get("userId") as string;
   const name = formData.get("name") as string;
   const role = formData.get("role") as UserRole;
   const unitId = formData.get("unitId") as string || null;
@@ -28,10 +29,11 @@ async function updateUserAction(userId: string, formData: FormData) {
   }, null);
 }
 
-async function deactivateUserAction(userId: string) {
+async function deactivateUserAction(formData: FormData) {
   "use server";
   const user = await getSessionUser();
   if (!user) redirect("/login");
+  const userId = formData.get("userId") as string;
   await deactivateUser(user, userId, null);
   redirect("/admin/usuarios");
 }
@@ -76,7 +78,8 @@ export default async function EditUserPage({ params }: { params: Promise<{ id: s
           <CardTitle>Información del Usuario</CardTitle>
         </CardHeader>
         <CardBody>
-          <form action={(fd) => updateUserAction(id, fd)} className="space-y-4">
+          <form action={updateUserAction} className="space-y-4">
+            <input type="hidden" name="userId" value={id} />
             <div className="grid grid-cols-2 gap-4">
               <Field>
                 <Label htmlFor="name">Nombre</Label>
@@ -145,7 +148,8 @@ export default async function EditUserPage({ params }: { params: Promise<{ id: s
             <p className="text-sm text-slate-600 mb-4">
               Una vez desactivado, el usuario no podrá acceder al sistema.
             </p>
-            <form action={() => deactivateUserAction(id)}>
+            <form action={deactivateUserAction}>
+              <input type="hidden" name="userId" value={id} />
               <Button type="submit" variant="danger">
                 Desactivar Usuario
               </Button>

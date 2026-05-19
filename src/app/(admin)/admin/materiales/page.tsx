@@ -6,8 +6,14 @@ import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/components/ui/tab
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
-export default async function MaterialsPage() {
+export default async function MaterialsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ imported?: string }>;
+}) {
   const user = (await getSessionUser())!;
+  const params = await searchParams;
+  const imported = params?.imported ? Number.parseInt(params.imported, 10) : 0;
 
   // Get all materials (active and inactive) with serial number count
   const materials = await prisma.material.findMany({
@@ -25,10 +31,20 @@ export default async function MaterialsPage() {
           <h1 className="text-2xl font-bold">Materiales</h1>
           <p className="text-sm text-slate-500">Catálogo maestro de materiales ({materials.length} total)</p>
         </div>
-        <Link href="/admin/materiales/nuevo">
-          <Button>Nuevo material</Button>
-        </Link>
+        <div className="flex gap-2">
+          <Link href="/admin/materiales/importar">
+            <Button variant="secondary">Importar masivo</Button>
+          </Link>
+          <Link href="/admin/materiales/nuevo">
+            <Button>Nuevo material</Button>
+          </Link>
+        </div>
       </div>
+      {imported > 0 ? (
+        <div className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+          Se importaron {imported} materiales correctamente.
+        </div>
+      ) : null}
       <Card>
         <CardBody>
           {materials.length === 0 ? (

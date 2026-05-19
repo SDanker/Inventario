@@ -114,6 +114,7 @@ export default async function EditMaterialPage({ params }: { params: Promise<{ i
   if (!material) notFound();
 
   const isAdmin = user.role === "COMANDANCIA_ADMIN";
+  const isUnitManager = user.role === "UNIT_MANAGER";
   const isOperational = user.role === "OPERATIONAL";
 
   const categories = await listCategories(user);
@@ -133,13 +134,24 @@ export default async function EditMaterialPage({ params }: { params: Promise<{ i
 
   const stocks = await getMaterialStocks(user, id);
   const assignedUnitIds = stocks.map(s => s.unitId);
-  const availableUnitsForAssignment = isAdmin
-    ? await prisma.unit.findMany({
-        where: { active: true, id: { notIn: assignedUnitIds } },
-        select: { id: true, name: true, code: true },
-        orderBy: { name: "asc" },
-      })
-    : [];
+
+  // Determinar unidades disponibles para asignación según rol
+  let availableUnitsForAssignment = [];
+  let userUnitForAssignment = null;
+
+  if (isAdmin) {
+    availableUnitsForAssignment = await prisma.unit.findMany({
+      where: { active: true, id: { notIn: assignedUnitIds } },
+      select: { id: true, name: true, code: true },
+      orderBy: { name: "asc" },
+    });
+  } else if (isUnitManager && user.unitId && !assignedUnitIds.includes(user.unitId)) {
+    // Para encargados, mostrar su propia unidad si no está ya asignada
+    userUnitForAssignment = await prisma.unit.findUnique({
+      where: { id: user.unitId },
+      select: { id: true, name: true, code: true },
+    });
+  }
 
   const users = await prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" } });
   const units = await prisma.unit.findMany({ where: { active: true }, orderBy: { name: "asc" } });
@@ -157,12 +169,17 @@ export default async function EditMaterialPage({ params }: { params: Promise<{ i
       </div>
 
       {/* Información básica */}
+      {isOperational && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded p-4 text-yellow-800 text-sm">
+          Como operario, solo puedes ver la información del material. Para editar, contacta a tu encargado o administrador.
+        </div>
+      )}
       <Card>
         <CardHeader>
-          <CardTitle>Información Básica</CardTitle>
+          <CardTitle>Información Básica {isOperational && "(Solo lectura)"}</CardTitle>
         </CardHeader>
         <CardBody>
-          <form action={updateMaterialAction} className="space-y-4">
+          <form action={updateMaterialAction} className="space-y-4" style={isOperational ? { pointerEvents: "none", opacity: 0.6 } : {}}>
             <input type="hidden" name="materialId" value={id} />
             <Field>
               <Label htmlFor="code">Código (Generado automáticamente)</Label>
@@ -214,10 +231,10 @@ export default async function EditMaterialPage({ params }: { params: Promise<{ i
 
             <Field>
               <Label htmlFor="description">Descripción</Label>
-              <Textarea id="description" name="description" defaultValue={material.description || ""} maxLength={1000} />
+              <Textarea id="description" name="description" defaultValue={material.description || ""} maxLength={1000} disabled={isOperational} />
             </Field>
 
-            <Button type="submit">Guardar Cambios</Button>
+            {!isOperational && <Button type="submit">Guardar Cambios</Button>}
           </form>
         </CardBody>
       </Card>
@@ -263,9 +280,10 @@ export default async function EditMaterialPage({ params }: { params: Promise<{ i
       {/* Números de Serie */}
       <Card>
         <CardHeader>
-          <CardTitle>Números de Serie ({serialNumbers.length})</CardTitle>
+          <CardTitle>Números de Serie ({serialNumbers.length}) {isOperational && "(Solo lectura)"}</CardTitle>
         </CardHeader>
         <CardBody className="space-y-4">
+          {!isOperational && (
           <form action={addSerialNumberAction} className="space-y-3 border-b pb-4">
             <input type="hidden" name="materialId" value={id} />
             <h3 className="font-semibold text-sm">Agregar Número de Serie</h3>
@@ -302,6 +320,7 @@ export default async function EditMaterialPage({ params }: { params: Promise<{ i
 
             <Button type="submit" size="sm">Agregar Número de Serie</Button>
           </form>
+          )}
 
           {serialNumbers.length === 0 ? (
             <p className="text-sm text-slate-500">Sin números de serie aún</p>
@@ -313,7 +332,7 @@ export default async function EditMaterialPage({ params }: { params: Promise<{ i
                   <TH>Asignado a</TH>
                   <TH>Tipo</TH>
                   <TH>Notas</TH>
-                  <TH>Acciones</TH>
+                  {!isOperational && <TH>Acciones</TH>}
                 </TR>
               </THead>
               <TBody>
@@ -327,12 +346,14 @@ export default async function EditMaterialPage({ params }: { params: Promise<{ i
                       {sn.assignedToUser ? <Badge>Persona</Badge> : sn.assignedToUnit ? <Badge>Ubicación</Badge> : <Badge tone="neutral">—</Badge>}
                     </TD>
                     <TD className="text-sm text-slate-600">{sn.notes || "—"}</TD>
+                    {!isOperational && (
                     <TD>
                       <form action={deleteSerialNumberAction} style={{ display: "inline" }}>
                         <input type="hidden" name="serialNumberId" value={sn.id} />
                         <button type="submit" className="text-red-600 hover:underline text-sm">Eliminar</button>
                       </form>
                     </TD>
+                    )}
                   </TR>
                 ))}
               </TBody>
@@ -399,19 +420,31 @@ export default async function EditMaterialPage({ params }: { params: Promise<{ i
             <p className="text-sm text-slate-500">Sin asignaciones a unidades aún.</p>
           )}
 
-          {availableUnitsForAssignment.length > 0 && !isOperational && (
+          {!isOperational && (availableUnitsForAssignment.length > 0 || userUnitForAssignment) && (
             <form action={assignToUnitAction} className="border-t pt-4 mt-4 space-y-3">
               <input type="hidden" name="materialId" value={id} />
               <h4 className="font-semibold text-sm">Asignar a Nueva Unidad</h4>
               <div className="grid grid-cols-2 gap-3">
                 <Field>
                   <Label htmlFor="unitId">Unidad</Label>
-                  <Select id="unitId" name="unitId" required>
-                    <option value="">Selecciona una unidad</option>
-                    {availableUnitsForAssignment.map((unit) => (
-                      <option key={unit.id} value={unit.id}>{unit.name} ({unit.code})</option>
-                    ))}
-                  </Select>
+                  {isAdmin ? (
+                    <Select id="unitId" name="unitId" required>
+                      <option value="">Selecciona una unidad</option>
+                      {availableUnitsForAssignment.map((unit) => (
+                        <option key={unit.id} value={unit.id}>{unit.name} ({unit.code})</option>
+                      ))}
+                    </Select>
+                  ) : (
+                    <>
+                      <Input
+                        type="text"
+                        defaultValue={userUnitForAssignment?.name || ""}
+                        disabled
+                      />
+                      <input type="hidden" name="unitId" value={userUnitForAssignment?.id || ""} />
+                      <p className="text-xs text-slate-500 mt-1">Como encargado, solo puedes asignar a tu unidad</p>
+                    </>
+                  )}
                 </Field>
                 <Field>
                   <Label htmlFor="quantity">Cantidad</Label>
@@ -430,8 +463,8 @@ export default async function EditMaterialPage({ params }: { params: Promise<{ i
         </CardBody>
       </Card>
 
-      {/* Zona de Baja */}
-      {material.active && (
+      {/* Zona de Baja - Solo para Administradores */}
+      {material.active && isAdmin && (
         <Card>
           <CardHeader>
             <CardTitle className="text-red-600">Zona de Baja</CardTitle>

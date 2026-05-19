@@ -4,7 +4,9 @@
       "Bash(npx prisma *)",
       "Bash(docker compose *)",
       "Bash(grep -E \"\\\\.\\(tsx|ts\\)$\")",
-      "Bash(curl -s http://localhost:3000/login)"
+      "Bash(curl -s http://localhost:3000/login)",
+      "Bash(curl -s http://190.215.94.80:3000)",
+      "Bash(curl -s http://190.215.94.80:3000 -L)"
     ]
   }
 }
