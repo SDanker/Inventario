@@ -1,12 +1,14 @@
 "use server";
 
 import { redirect, notFound } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import Image from "next/image";
 import { getSessionUser } from "@/auth";
-import { getMaterial, updateMaterial, deactivateMaterial, addMaterialSerialNumber, updateMaterialSerialNumber, removeMaterialSerialNumber, listCategories, assignMaterialToUnit, updateMaterialQuantityInUnit, getMaterialStocks } from "@/lib/services/catalog.service";
+import { getMaterial, updateMaterial, deactivateMaterial, addMaterialSerialNumber, updateMaterialSerialNumber, removeMaterialSerialNumber, listCategories, assignMaterialToUnit, updateMaterialQuantityInUnit, getMaterialStocks, addMaterialImage, removeMaterialImage } from "@/lib/services/catalog.service";
 import { MaterialType } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { getStorage } from "@/lib/storage";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Label } from "@/components/ui/label";
@@ -14,6 +16,12 @@ import { Input, Textarea, Select } from "@/components/ui/input";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { clientIp } from "@/lib/http";
+
+type UnitAssignmentOption = {
+  id: string;
+  name: string;
+  code: string;
+};
 
 async function updateMaterialAction(formData: FormData) {
   "use server";
@@ -106,6 +114,57 @@ async function updateStockAction(formData: FormData) {
   await updateMaterialQuantityInUnit(user, materialId, unitId, { quantity }, null);
 }
 
+async function uploadMaterialImageAction(formData: FormData) {
+  "use server";
+  const user = await getSessionUser();
+  if (!user) redirect("/login");
+
+  const materialId = formData.get("materialId") as string;
+  const file = formData.get("file") as File | null;
+  if (!materialId || !file || file.size === 0) return;
+
+  const existingCount = await prisma.materialImage.count({ where: { materialId } });
+  if (existingCount >= 6) return;
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const storage = getStorage();
+  const saved = await storage.save({
+    buffer,
+    originalName: file.name,
+    mimeType: file.type,
+  });
+
+  await addMaterialImage(user, {
+    materialId,
+    fileUrl: `/storage/uploads/${saved.path}`,
+    order: existingCount,
+  }, null);
+  revalidatePath(`/admin/materiales/${materialId}`);
+}
+
+async function deleteMaterialImageAction(formData: FormData) {
+  "use server";
+  const user = await getSessionUser();
+  if (!user) redirect("/login");
+
+  const materialId = formData.get("materialId") as string;
+  const imageId = formData.get("imageId") as string;
+  if (!materialId || !imageId) return;
+
+  const image = await prisma.materialImage.findUnique({ where: { id: imageId } });
+  if (!image || image.materialId !== materialId) return;
+
+  try {
+    const storage = getStorage();
+    await storage.delete(image.fileUrl.replace("/storage/uploads/", ""));
+  } catch (err) {
+    console.error("Failed to delete material image file:", err);
+  }
+
+  await removeMaterialImage(user, imageId, null);
+  revalidatePath(`/admin/materiales/${materialId}`);
+}
+
 export default async function EditMaterialPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = (await getSessionUser())!;
@@ -136,8 +195,8 @@ export default async function EditMaterialPage({ params }: { params: Promise<{ i
   const assignedUnitIds = stocks.map(s => s.unitId);
 
   // Determinar unidades disponibles para asignación según rol
-  let availableUnitsForAssignment = [];
-  let userUnitForAssignment = null;
+  let availableUnitsForAssignment: UnitAssignmentOption[] = [];
+  let userUnitForAssignment: UnitAssignmentOption | null = null;
 
   if (isAdmin) {
     availableUnitsForAssignment = await prisma.unit.findMany({
@@ -251,14 +310,9 @@ export default async function EditMaterialPage({ params }: { params: Promise<{ i
               {images.map((img) => (
                 <div key={img.id} className="relative group border rounded overflow-hidden bg-gray-100 aspect-square">
                   <img src={img.fileUrl} alt="Material" className="w-full h-full object-cover" />
-                  <form action={async () => {
-                    "use server";
-                    await fetch(`/api/materials/${id}/images`, {
-                      method: "DELETE",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ imageId: img.id }),
-                    });
-                  }} className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                  <form action={deleteMaterialImageAction} className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                    <input type="hidden" name="materialId" value={id} />
+                    <input type="hidden" name="imageId" value={img.id} />
                     <button type="submit" className="text-white text-sm font-semibold bg-red-600 px-3 py-1 rounded hover:bg-red-700">Eliminar</button>
                   </form>
                 </div>
@@ -486,23 +540,8 @@ export default async function EditMaterialPage({ params }: { params: Promise<{ i
 function ImageUploadForm({ materialId }: { materialId: string }) {
   return (
     <div className="border-2 border-dashed border-gray-300 rounded p-6 text-center">
-      <form action={async (formData) => {
-        "use server";
-        const file = formData.get("file") as File;
-        if (!file) return;
-
-        const data = new FormData();
-        data.append("file", file);
-
-        const res = await fetch(`/api/materials/${materialId}/images`, {
-          method: "POST",
-          body: data,
-        });
-
-        if (!res.ok) {
-          throw new Error(`Upload failed: ${res.statusText}`);
-        }
-      }}>
+      <form action={uploadMaterialImageAction}>
+        <input type="hidden" name="materialId" value={materialId} />
         <input
           type="file"
           name="file"

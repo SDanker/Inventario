@@ -110,3 +110,245 @@ export async function buildInventoryWorkbook(user: SessionUser, opts: { scope: "
 
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
+
+/**
+ * Reporte de stock bajo: insumos con estado BAJO_STOCK o AGOTADO
+ */
+export async function buildLowStockWorkbook(user: SessionUser) {
+  requirePermission(user, "reports.export.any");
+
+  const consumables = await prisma.consumableInventory.findMany({
+    where: {
+      status: {
+        in: ["BAJO_STOCK", "AGOTADO"],
+      },
+    },
+    include: { material: { include: { category: true } }, unit: true },
+    orderBy: [{ unit: { code: "asc" } }, { material: { name: "asc" } }],
+  });
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "SIIB";
+  wb.created = new Date();
+
+  const ws = wb.addWorksheet("Stock Bajo");
+  ws.columns = [
+    { header: "Unidad", key: "unit", width: 14 },
+    { header: "Material", key: "material", width: 32 },
+    { header: "Categoría", key: "category", width: 18 },
+    { header: "Stock actual", key: "stock", width: 12 },
+    { header: "Stock mínimo", key: "min", width: 12 },
+    { header: "U. medida", key: "uom", width: 10 },
+    { header: "Lote", key: "batch", width: 16 },
+    { header: "Vence", key: "exp", width: 12 },
+    { header: "Estado", key: "status", width: 14 },
+    { header: "Ubicación", key: "loc", width: 24 },
+  ];
+  ws.getRow(1).font = { bold: true };
+  for (const c of consumables) {
+    ws.addRow({
+      unit: c.unit.code,
+      material: c.material.name,
+      category: c.material.category.name,
+      stock: Number(c.currentStock),
+      min: Number(c.minimumStock),
+      uom: c.unitOfMeasure,
+      batch: c.batchNumber ?? "",
+      exp: c.expirationDate ? c.expirationDate.toISOString().slice(0, 10) : "",
+      status: c.status,
+      loc: c.location ?? "",
+    });
+  }
+
+  return Buffer.from(await wb.xlsx.writeBuffer());
+}
+
+/**
+ * Reporte de material vencido: insumos vencidos o próximos a vencer
+ */
+export async function buildExpiredWorkbook(user: SessionUser) {
+  requirePermission(user, "reports.export.any");
+
+  const now = new Date();
+  const consumables = await prisma.consumableInventory.findMany({
+    where: {
+      expirationDate: {
+        lte: now,
+      },
+    },
+    include: { material: { include: { category: true } }, unit: true },
+    orderBy: [{ expirationDate: "asc" }, { unit: { code: "asc" } }],
+  });
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "SIIB";
+  wb.created = new Date();
+
+  const ws = wb.addWorksheet("Vencidos");
+  ws.columns = [
+    { header: "Unidad", key: "unit", width: 14 },
+    { header: "Material", key: "material", width: 32 },
+    { header: "Categoría", key: "category", width: 18 },
+    { header: "Stock", key: "stock", width: 10 },
+    { header: "U. medida", key: "uom", width: 10 },
+    { header: "Lote", key: "batch", width: 16 },
+    { header: "Fecha vencimiento", key: "exp", width: 16 },
+    { header: "Ubicación", key: "loc", width: 24 },
+  ];
+  ws.getRow(1).font = { bold: true };
+  for (const c of consumables) {
+    ws.addRow({
+      unit: c.unit.code,
+      material: c.material.name,
+      category: c.material.category.name,
+      stock: Number(c.currentStock),
+      uom: c.unitOfMeasure,
+      batch: c.batchNumber ?? "",
+      exp: c.expirationDate ? c.expirationDate.toISOString().slice(0, 10) : "",
+      loc: c.location ?? "",
+    });
+  }
+
+  return Buffer.from(await wb.xlsx.writeBuffer());
+}
+
+/**
+ * Reporte de mantenciones: registros de mantenimiento
+ */
+export async function buildMaintenanceWorkbook(user: SessionUser) {
+  requirePermission(user, "reports.export.any");
+
+  const records = await prisma.maintenanceRecord.findMany({
+    include: { asset: { include: { material: true, unit: true } } },
+    orderBy: [{ maintenanceDate: "desc" }],
+  });
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "SIIB";
+  wb.created = new Date();
+
+  const ws = wb.addWorksheet("Mantenciones");
+  ws.columns = [
+    { header: "Unidad", key: "unit", width: 14 },
+    { header: "Código activo", key: "asset", width: 18 },
+    { header: "Material", key: "material", width: 32 },
+    { header: "Tipo", key: "type", width: 18 },
+    { header: "Fecha mantención", key: "maintenanceDate", width: 14 },
+    { header: "Próxima mantención", key: "nextMaintenanceDate", width: 16 },
+    { header: "Proveedor", key: "provider", width: 20 },
+    { header: "Costo", key: "cost", width: 12 },
+    { header: "Observaciones", key: "notes", width: 30 },
+  ];
+  ws.getRow(1).font = { bold: true };
+  for (const m of records) {
+    ws.addRow({
+      unit: m.asset.unit.code,
+      asset: m.asset.internalCode,
+      material: m.asset.material.name,
+      type: m.maintenanceType,
+      maintenanceDate: m.maintenanceDate.toISOString().slice(0, 10),
+      nextMaintenanceDate: m.nextMaintenanceDate ? m.nextMaintenanceDate.toISOString().slice(0, 10) : "",
+      provider: m.externalCompany ?? "",
+      cost: m.cost ? Number(m.cost) : "",
+      notes: m.description,
+    });
+  }
+
+  return Buffer.from(await wb.xlsx.writeBuffer());
+}
+
+/**
+ * Reporte de traslados
+ */
+export async function buildTransfersWorkbook(user: SessionUser) {
+  requirePermission(user, "reports.export.any");
+
+  const transfers = await prisma.transfer.findMany({
+    include: {
+      originUnit: true,
+      destinationUnit: true,
+      requestedBy: true,
+      approvedBy: true,
+      receivedBy: true,
+      items: { include: { material: true } },
+    },
+    orderBy: [{ createdAt: "desc" }],
+  });
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "SIIB";
+  wb.created = new Date();
+
+  const ws = wb.addWorksheet("Traslados");
+  ws.columns = [
+    { header: "ID", key: "id", width: 12 },
+    { header: "Origen", key: "origin", width: 14 },
+    { header: "Destino", key: "dest", width: 14 },
+    { header: "Solicitado por", key: "requester", width: 18 },
+    { header: "Fecha solicitud", key: "reqDate", width: 14 },
+    { header: "Estado", key: "status", width: 14 },
+    { header: "Aprobado por", key: "approver", width: 18 },
+    { header: "Recibido por", key: "receiver", width: 18 },
+    { header: "Cantidad items", key: "itemCount", width: 12 },
+  ];
+  ws.getRow(1).font = { bold: true };
+  for (const t of transfers) {
+    ws.addRow({
+      id: t.code,
+      origin: t.originUnit.code,
+      dest: t.destinationUnit.code,
+      requester: t.requestedBy.name,
+      reqDate: t.createdAt.toISOString().slice(0, 10),
+      status: t.status,
+      approver: t.approvedBy?.name ?? "",
+      receiver: t.receivedBy?.name ?? "",
+      itemCount: t.items.length,
+    });
+  }
+
+  return Buffer.from(await wb.xlsx.writeBuffer());
+}
+
+/**
+ * Reporte de auditoría
+ */
+export async function buildAuditWorkbook(user: SessionUser) {
+  requirePermission(user, "audit.read");
+
+  const logs = await prisma.auditLog.findMany({
+    include: { user: true },
+    orderBy: [{ createdAt: "desc" }],
+    take: 10000, // Limitar para no sobrecargar
+  });
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "SIIB";
+  wb.created = new Date();
+
+  const ws = wb.addWorksheet("Auditoría");
+  ws.columns = [
+    { header: "Fecha", key: "date", width: 16 },
+    { header: "Usuario", key: "user", width: 18 },
+    { header: "Acción", key: "action", width: 12 },
+    { header: "Tabla", key: "table", width: 16 },
+    { header: "Registro ID", key: "recordId", width: 20 },
+    { header: "Valor anterior", key: "oldVal", width: 30 },
+    { header: "Valor nuevo", key: "newVal", width: 30 },
+    { header: "IP", key: "ip", width: 16 },
+  ];
+  ws.getRow(1).font = { bold: true };
+  for (const log of logs) {
+    ws.addRow({
+      date: log.createdAt.toLocaleString("es-CL"),
+      user: log.user?.email ?? "Sistema",
+      action: log.action,
+      table: log.tableName,
+      recordId: log.recordId.slice(0, 12),
+      oldVal: log.oldValue ? JSON.stringify(log.oldValue).slice(0, 50) : "",
+      newVal: log.newValue ? JSON.stringify(log.newValue).slice(0, 50) : "",
+      ip: log.ipAddress ?? "",
+    });
+  }
+
+  return Buffer.from(await wb.xlsx.writeBuffer());
+}

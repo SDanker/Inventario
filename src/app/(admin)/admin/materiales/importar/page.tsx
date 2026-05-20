@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import ExcelJS from "exceljs";
 import { MaterialType } from "@prisma/client";
 import { getSessionUser } from "@/auth";
 import { prisma } from "@/lib/db";
@@ -109,6 +110,56 @@ function parseCsv(text: string) {
   return rows;
 }
 
+function cellText(value: ExcelJS.CellValue) {
+  if (value === null || value === undefined) return "";
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (typeof value === "object") {
+    if ("text" in value && typeof value.text === "string") return value.text.trim();
+    if ("result" in value) return String(value.result ?? "").trim();
+    if ("richText" in value && Array.isArray(value.richText)) {
+      return value.richText.map((part) => part.text).join("").trim();
+    }
+  }
+  return String(value).trim();
+}
+
+async function parseXlsx(file: File) {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(await file.arrayBuffer());
+
+  const ws = wb.getWorksheet("Materiales") ?? wb.worksheets[0];
+  if (!ws || ws.rowCount < 2) {
+    throw new Error("El Excel debe incluir la hoja Materiales con encabezados y al menos una fila.");
+  }
+
+  const headerRow = ws.getRow(1);
+  const headers: string[] = [];
+  for (let col = 1; col <= headerRow.cellCount; col++) {
+    headers.push(normalize(cellText(headerRow.getCell(col).value)));
+  }
+
+  const rows: { line: number; row: Map<string, string> }[] = [];
+  for (let rowNumber = 2; rowNumber <= ws.rowCount; rowNumber++) {
+    const excelRow = ws.getRow(rowNumber);
+    const row = new Map<string, string>();
+    let hasValue = false;
+
+    headers.forEach((header, index) => {
+      const value = cellText(excelRow.getCell(index + 1).value);
+      if (value) hasValue = true;
+      row.set(header, value);
+    });
+
+    if (hasValue) rows.push({ line: rowNumber, row });
+  }
+
+  if (rows.length === 0) {
+    throw new Error("El Excel debe incluir al menos una fila de material.");
+  }
+
+  return rows;
+}
+
 function valueFrom(row: Map<string, string>, keys: string[]) {
   for (const key of keys) {
     const value = row.get(key);
@@ -145,11 +196,14 @@ async function importMaterialsAction(formData: FormData) {
 
   const file = formData.get("file") as File | null;
   const pastedCsv = formData.get("csv") as string | null;
-  const fileText = file && file.size > 0 ? await file.text() : "";
+  const hasFile = Boolean(file && file.size > 0);
+  const fileName = file?.name.toLowerCase() ?? "";
+  const isExcelFile = hasFile && (fileName.endsWith(".xlsx") || file?.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  const fileText = hasFile && !isExcelFile ? await file!.text() : "";
   const csvText = fileText || pastedCsv || "";
 
-  if (!csvText.trim()) {
-    redirectWithImportError("Sube un archivo CSV o pega filas en el cuadro de texto.");
+  if (!hasFile && !csvText.trim()) {
+    redirectWithImportError("Sube un archivo Excel/CSV o pega filas en el cuadro de texto.");
   }
 
   const categories = await prisma.category.findMany({ select: { id: true, name: true } });
@@ -164,9 +218,9 @@ async function importMaterialsAction(formData: FormData) {
 
   let parsedRows: ReturnType<typeof parseCsv> = [];
   try {
-    parsedRows = parseCsv(csvText);
+    parsedRows = isExcelFile && file ? await parseXlsx(file) : parseCsv(csvText);
   } catch (error) {
-    redirectWithImportError(error instanceof Error ? error.message : "No se pudo leer el CSV.");
+    redirectWithImportError(error instanceof Error ? error.message : "No se pudo leer el archivo.");
   }
 
   const importRows: ImportRow[] = [];
@@ -267,9 +321,14 @@ export default async function ImportMaterialsPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>Formato CSV</CardTitle>
+          <CardTitle>Plantilla de importación</CardTitle>
         </CardHeader>
         <CardBody className="space-y-3 text-sm text-slate-700">
+          <div>
+            <Link href="/api/materials/import-template.xlsx">
+              <Button type="button">Descargar template Excel</Button>
+            </Link>
+          </div>
           <p>Encabezados requeridos: nombre, marca, categoria, tipo.</p>
           <p>Encabezados opcionales: modelo, numero_parte, descripcion, unidad, cantidad.</p>
           <p>Tipos aceptados: {Object.values(materialTypeLabels).join(", ")}.</p>
@@ -288,8 +347,8 @@ Casco estructural;Scott;AV-2100;SCT-AV2100;EPP;EPP;Casco para combate interior;B
           </CardHeader>
           <CardBody className="space-y-4">
             <Field>
-              <Label htmlFor="file">Archivo CSV</Label>
-              <Input id="file" name="file" type="file" accept=".csv,text/csv" />
+              <Label htmlFor="file">Archivo Excel o CSV</Label>
+              <Input id="file" name="file" type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
             </Field>
 
             <Field>

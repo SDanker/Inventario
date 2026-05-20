@@ -126,6 +126,8 @@ enum AlertType {
   PRUEBA_HIDRAULICA_VENCIDA
   ACTIVO_SIN_HOJA_VIDA
   DOCUMENTO_PENDIENTE
+  REVISION_VENCIDA
+  REVISION_PROXIMA
 }
 
 enum AlertStatus {
@@ -155,6 +157,7 @@ model User {
   transfersRequested  Transfer[]          @relation("TransferRequested")
   transfersApproved   Transfer[]          @relation("TransferApproved")
   transfersReceived   Transfer[]          @relation("TransferReceived")
+  assetReviews        AssetReview[]
   auditLogs           AuditLog[]
   sessions            Session[]
   accounts            Account[]
@@ -324,35 +327,40 @@ model UnitMaterialStock {
 }
 
 model Asset {
-  id               String      @id @default(cuid())
-  materialId       String      @map("material_id")
-  material         Material    @relation(fields: [materialId], references: [id])
-  unitId           String      @map("unit_id")
-  unit             Unit        @relation(fields: [unitId], references: [id])
-  internalCode     String      @unique @map("internal_code")
+  id                    String      @id @default(cuid())
+  materialId            String      @map("material_id")
+  material              Material    @relation(fields: [materialId], references: [id])
+  unitId                String      @map("unit_id")
+  unit                  Unit        @relation(fields: [unitId], references: [id])
+  internalCode          String      @unique @map("internal_code")
   // Postgres trata múltiples NULL como distintos, así que @unique vale para "único cuando no es null".
-  serialNumber     String?     @unique @map("serial_number")
-  brand            String?
-  model            String?
-  licensePlate     String?     @map("license_plate")
-  year             Int?
-  specificLocation String?     @map("specific_location")
-  responsibleName  String?     @map("responsible_name")
-  entryDate        DateTime    @map("entry_date")
-  expirationDate   DateTime?   @map("expiration_date")
-  status           AssetStatus @default(OPERATIVO)
-  observations     String?
-  createdAt        DateTime    @default(now()) @map("created_at")
-  updatedAt        DateTime    @updatedAt @map("updated_at")
+  serialNumber          String?     @unique @map("serial_number")
+  brand                 String?
+  model                 String?
+  licensePlate          String?     @map("license_plate")
+  year                  Int?
+  specificLocation      String?     @map("specific_location")
+  responsibleName       String?     @map("responsible_name")
+  entryDate             DateTime    @map("entry_date")
+  expirationDate        DateTime?   @map("expiration_date")
+  nextReviewDate        DateTime?   @map("next_review_date")
+  reviewIntervalValue   Int?        @map("review_interval_value")
+  reviewIntervalUnit    String?     @map("review_interval_unit") // "days", "weeks", "months", "years"
+  status                AssetStatus @default(OPERATIVO)
+  observations          String?
+  createdAt             DateTime    @default(now()) @map("created_at")
+  updatedAt             DateTime    @updatedAt @map("updated_at")
 
   maintenances  MaintenanceRecord[]
   documents     Document[]
   movements     InventoryMovement[]
   transferItems TransferItem[]
   alerts        Alert[]
+  reviews       AssetReview[]
 
   @@index([unitId, status])
   @@index([materialId])
+  @@index([nextReviewDate])
   @@map("assets")
 }
 
@@ -406,6 +414,21 @@ model MaintenanceRecord {
   @@index([assetId, maintenanceDate])
   @@index([nextMaintenanceDate])
   @@map("maintenance_records")
+}
+
+model AssetReview {
+  id          String   @id @default(cuid())
+  assetId     String   @map("asset_id")
+  asset       Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  reviewDate  DateTime @map("review_date") @default(now())
+  status      String   @map("status") // "OK", "CON_OBSERVACIONES", "INOPERATIVA"
+  comments    String?  @map("comments")
+  reviewedBy  String   @map("reviewed_by")
+  reviewedByUser User  @relation(fields: [reviewedBy], references: [id])
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([assetId, reviewDate(sort: Desc)])
+  @@map("asset_reviews")
 }
 
 model Document {

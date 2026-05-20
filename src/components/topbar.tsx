@@ -1,6 +1,11 @@
 import { signOut } from "@/auth";
 import { Button } from "./ui/button";
 
+async function signOutAction() {
+  "use server";
+  await signOut({ redirectTo: "/login" });
+}
+
 export function Topbar({ userName, userRole, unitName }: { userName: string; userRole: string; unitName?: string | null }) {
   return (
     <header className="h-14 border-b border-slate-200 bg-white flex items-center justify-between px-4">
@@ -12,12 +17,7 @@ export function Topbar({ userName, userRole, unitName }: { userName: string; use
           <div className="text-sm font-medium text-slate-900">{userName}</div>
           <div className="text-xs text-slate-500">{userRole}</div>
         </div>
-        <form
-          action={async () => {
-            "use server";
-            await signOut({ redirectTo: "/login" });
-          }}
-        >
+        <form action={signOutAction}>
           <Button variant="ghost" size="sm" type="submit">
             Salir
           </Button>

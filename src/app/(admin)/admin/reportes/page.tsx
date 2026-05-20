@@ -4,13 +4,11 @@ import { Button } from "@/components/ui/button";
 
 const reports = [
   { href: "/api/reports/inventory.xlsx?scope=global", title: "Inventario consolidado", desc: "Todos los activos del Departamento." },
-  // TODO: implementar los siguientes endpoints siguiendo el patrón de inventory.xlsx:
-  { href: "#", title: "Inventario por unidad (TODO)", desc: "/api/reports/inventory.xlsx?scope=unit&unitId=…" },
-  { href: "#", title: "Stock bajo (TODO)", desc: "/api/reports/low-stock.xlsx" },
-  { href: "#", title: "Material vencido (TODO)", desc: "/api/reports/expired.xlsx" },
-  { href: "#", title: "Mantenciones (TODO)", desc: "/api/reports/maintenance.xlsx" },
-  { href: "#", title: "Traslados (TODO)", desc: "/api/reports/transfers.xlsx" },
-  { href: "#", title: "Auditoría (TODO)", desc: "/api/reports/audit.xlsx" },
+  { href: "/api/reports/low-stock.xlsx", title: "Stock bajo", desc: "Insumos con stock bajo o agotado." },
+  { href: "/api/reports/expired.xlsx", title: "Material vencido", desc: "Insumos con fecha de vencimiento expirada." },
+  { href: "/api/reports/maintenance.xlsx", title: "Mantenciones", desc: "Historial completo de mantenciones registradas." },
+  { href: "/api/reports/transfers.xlsx", title: "Traslados", desc: "Todos los traslados entre unidades." },
+  { href: "/api/reports/audit.xlsx", title: "Auditoría", desc: "Registro de auditoría (últimos 10,000 eventos)." },
 ];
 
 export default function ReportsHubPage() {

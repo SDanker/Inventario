@@ -11,6 +11,7 @@ const navItems: NavItem[] = [
   { href: "/admin/categorias", label: "Categorías" },
   { href: "/admin/materiales", label: "Materiales" },
   { href: "/admin/inventario", label: "Gestión Inventario" },
+  { href: "/admin/revisiones", label: "Revisiones Pendientes" },
   { href: "/admin/traslados", label: "Traslados" },
   { href: "/admin/alertas", label: "Alertas" },
   { href: "/admin/reportes", label: "Reportes" },

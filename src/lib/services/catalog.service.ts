@@ -11,9 +11,18 @@ export const categoryCreateSchema = z.object({
   description: z.string().trim().max(500).optional().nullable(),
 });
 
+export const categoryUpdateSchema = categoryCreateSchema.partial().extend({
+  active: z.boolean().optional(),
+});
+
 export async function listCategories(user: SessionUser) {
   requirePermission(user, "categories.read");
   return prisma.category.findMany({ orderBy: { name: "asc" } });
+}
+
+export async function getCategory(user: SessionUser, id: string) {
+  requirePermission(user, "categories.read");
+  return prisma.category.findUnique({ where: { id } });
 }
 
 export async function createCategory(user: SessionUser, input: z.infer<typeof categoryCreateSchema>, ip?: string | null) {
@@ -23,6 +32,38 @@ export async function createCategory(user: SessionUser, input: z.infer<typeof ca
     const created = await tx.category.create({ data });
     await recordAudit(tx, { userId: user.id, action: "create", tableName: "categories", recordId: created.id, newValue: created, ipAddress: ip });
     return created;
+  });
+}
+
+export async function updateCategory(user: SessionUser, id: string, input: z.infer<typeof categoryUpdateSchema>, ip?: string | null) {
+  requirePermission(user, "categories.write");
+  const parsed = categoryUpdateSchema.parse(input);
+  const data = Object.fromEntries(Object.entries(parsed).filter(([, v]) => v !== undefined));
+  return prisma.$transaction(async (tx) => {
+    const previous = await tx.category.findUnique({ where: { id } });
+    if (!previous) throw new Error("Categoría no encontrada");
+    const updated = await tx.category.update({ where: { id }, data: data as any });
+    await recordAudit(tx, { userId: user.id, action: "update", tableName: "categories", recordId: id, oldValue: previous, newValue: updated, ipAddress: ip });
+    return updated;
+  });
+}
+
+export async function deactivateCategory(user: SessionUser, id: string, ip?: string | null) {
+  requirePermission(user, "categories.write");
+  return prisma.$transaction(async (tx) => {
+    const previous = await tx.category.findUnique({ where: { id } });
+    if (!previous) throw new Error("Categoría no encontrada");
+    const updated = await tx.category.update({ where: { id }, data: { active: false } });
+    await recordAudit(tx, {
+      userId: user.id,
+      action: "deactivate",
+      tableName: "categories",
+      recordId: id,
+      oldValue: { active: previous.active },
+      newValue: { active: false },
+      ipAddress: ip,
+    });
+    return updated;
   });
 }
 
@@ -151,7 +192,7 @@ export async function deactivateMaterial(user: SessionUser, id: string, ip?: str
 
 export const materialImageCreateSchema = z.object({
   materialId: z.string().cuid(),
-  fileUrl: z.string().url(),
+  fileUrl: z.string().min(1),
   order: z.number().int().min(0).max(5),
 });
 
