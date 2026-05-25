@@ -1,8 +1,10 @@
+import Link from "next/link";
 import { getSessionUser } from "@/auth";
 import { listAssets } from "@/lib/services/assets.service";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils";
 
 export default async function UnitAssetsPage() {
@@ -13,10 +15,9 @@ export default async function UnitAssetsPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Activos de la unidad</h1>
-        <span className="text-sm text-slate-500">
-          {/* TODO: form de crear activo replicando patrón de Unidades */}
-          Crear/editar pendiente.
-        </span>
+        <Link href="/unidad/activos/nuevo">
+          <Button>Nuevo activo</Button>
+        </Link>
       </div>
 
       <Card>
@@ -27,7 +28,14 @@ export default async function UnitAssetsPage() {
           ) : (
             <Table>
               <THead>
-                <TR><TH>Código</TH><TH>Material</TH><TH>Marca/Modelo</TH><TH>Ingreso</TH><TH>Estado</TH></TR>
+                <TR>
+                  <TH>Código</TH>
+                  <TH>Material</TH>
+                  <TH>Marca/Modelo</TH>
+                  <TH>Ingreso</TH>
+                  <TH>Estado</TH>
+                  <TH></TH>
+                </TR>
               </THead>
               <TBody>
                 {assets.map((a) => (
@@ -37,9 +45,25 @@ export default async function UnitAssetsPage() {
                     <TD>{[a.brand, a.model].filter(Boolean).join(" / ") || "—"}</TD>
                     <TD>{formatDate(a.entryDate)}</TD>
                     <TD>
-                      <Badge tone={a.status === "OPERATIVO" ? "success" : a.status === "FUERA_DE_SERVICIO" ? "danger" : "warning"}>
+                      <Badge
+                        tone={
+                          a.status === "OPERATIVO"
+                            ? "success"
+                            : a.status === "FUERA_DE_SERVICIO" || a.status === "DADO_DE_BAJA"
+                              ? "danger"
+                              : "warning"
+                        }
+                      >
                         {a.status}
                       </Badge>
+                    </TD>
+                    <TD className="text-right">
+                      <Link
+                        href={`/unidad/activos/${a.id}`}
+                        className="text-sm text-brand-600 hover:underline"
+                      >
+                        Ver detalles
+                      </Link>
                     </TD>
                   </TR>
                 ))}

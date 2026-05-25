@@ -5,22 +5,23 @@ import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/card";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 
-export default async function ReviewsPage() {
+export default async function UnitReviewsPage() {
   const user = (await getSessionUser())!;
   const assets = await listAssetsNeedingReview(user);
 
   const getDaysOverdue = (nextReviewDate: Date) => {
     const now = new Date();
     const diff = now.getTime() - nextReviewDate.getTime();
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    return days;
+    return Math.floor(diff / (1000 * 60 * 60 * 24));
   };
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Revisiones Pendientes</h1>
-        <span className="text-sm text-slate-600">{assets.length} activos pendientes</span>
+        <span className="text-sm text-slate-600">
+          {assets.length} activos pendientes
+        </span>
       </div>
 
       <Card>
@@ -34,7 +35,6 @@ export default async function ReviewsPage() {
                 <TR>
                   <TH>Código</TH>
                   <TH>Material</TH>
-                  <TH>Unidad</TH>
                   <TH>Última revisión</TH>
                   <TH>Vencimiento</TH>
                   <TH>Estado</TH>
@@ -53,7 +53,6 @@ export default async function ReviewsPage() {
                     <TR key={asset.id}>
                       <TD className="font-mono font-medium">{asset.internalCode}</TD>
                       <TD>{asset.material.name}</TD>
-                      <TD>{asset.unit.code}</TD>
                       <TD className="text-sm">
                         {lastReview
                           ? new Date(lastReview.reviewDate).toLocaleDateString("es-CL")
@@ -68,7 +67,10 @@ export default async function ReviewsPage() {
                         </Badge>
                       </TD>
                       <TD className="text-right">
-                        <Link href={`/admin/activos/${asset.id}/revisar`} className="text-sm text-brand-600 hover:underline">
+                        <Link
+                          href={`/unidad/activos/${asset.id}/revisar`}
+                          className="text-sm text-brand-600 hover:underline"
+                        >
                           Revisar
                         </Link>
                       </TD>

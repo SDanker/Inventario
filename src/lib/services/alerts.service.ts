@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/db";
-import { AlertStatus, AlertType, ConsumableStatus } from "@prisma/client";
+import { AlertStatus, AlertType, ConsumableStatus, MovementType, MovementStatus } from "@prisma/client";
+import { requirePermission, ForbiddenError, type SessionUser } from "@/lib/auth/permissions";
+import { recordAudit } from "@/lib/audit";
 
 /**
  * Job idempotente: detecta condiciones que generan alertas y las crea/actualiza.
@@ -81,4 +83,81 @@ async function upsertAlert(
     data: { unitId, alertType, title, dueDate: dueDate ?? null, ...ref },
   });
   return 1;
+}
+
+/**
+ * Marca una alerta como revisada/resuelta y deja constancia en la bitácora del
+ * material asociado:
+ *   - Si la alerta tiene assetId crea un AssetReview (status OK por defecto) con
+ *     `description` en comments.
+ *   - Si la alerta tiene consumableId crea un InventoryMovement de tipo AJUSTE
+ *     con `description` como reason.
+ * Cualquier usuario con `alerts.dismiss` y acceso a la unidad puede usarlo.
+ */
+export async function acknowledgeAlert(
+  user: SessionUser,
+  alertId: string,
+  description: string,
+  ip?: string | null,
+) {
+  requirePermission(user, "alerts.dismiss");
+
+  const cleanDescription = description.trim();
+  if (!cleanDescription) throw new Error("La descripción es obligatoria.");
+  if (cleanDescription.length > 1000) throw new Error("La descripción no puede superar 1000 caracteres.");
+
+  const alert = await prisma.alert.findUnique({
+    where: { id: alertId },
+    include: {
+      consumable: { select: { id: true, materialId: true, unitId: true } },
+    },
+  });
+  if (!alert) throw new Error("Alerta no encontrada");
+  if (alert.status !== AlertStatus.ABIERTA) throw new Error("La alerta ya fue resuelta o descartada.");
+
+  if (user.role !== "COMANDANCIA_ADMIN" && user.unitId !== alert.unitId) {
+    throw new ForbiddenError("No tienes permiso para resolver alertas de otra unidad.");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    if (alert.assetId) {
+      await tx.assetReview.create({
+        data: {
+          assetId: alert.assetId,
+          status: "OK",
+          comments: `[Alerta resuelta] ${cleanDescription}`,
+          reviewedBy: user.id,
+        },
+      });
+    } else if (alert.consumable) {
+      await tx.inventoryMovement.create({
+        data: {
+          materialId: alert.consumable.materialId,
+          originUnitId: alert.consumable.unitId,
+          movementType: MovementType.AJUSTE,
+          movementStatus: MovementStatus.REGISTRADO,
+          quantity: 0,
+          userId: user.id,
+          reason: `[Alerta ${alert.alertType} resuelta] ${cleanDescription}`,
+        },
+      });
+    }
+
+    const updated = await tx.alert.update({
+      where: { id: alertId },
+      data: { status: AlertStatus.RESUELTA, description: cleanDescription },
+    });
+
+    await recordAudit(tx, {
+      userId: user.id,
+      action: "acknowledge",
+      tableName: "alerts",
+      recordId: alertId,
+      oldValue: { status: alert.status },
+      newValue: { status: AlertStatus.RESUELTA, description: cleanDescription },
+      ipAddress: ip,
+    });
+
+    return updated;
+  });
 }

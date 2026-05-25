@@ -69,6 +69,8 @@ export async function deactivateCategory(user: SessionUser, id: string, ip?: str
 
 // ── Materiales ────────────────────────────────────────────────
 
+const MAINTENANCE_UNITS = ["days", "weeks", "months", "quarters", "years"] as const;
+
 export const materialCreateSchema = z.object({
   code: z.string().trim().min(1).max(30).optional().nullable(),
   name: z.string().trim().min(1).max(200),
@@ -78,6 +80,10 @@ export const materialCreateSchema = z.object({
   categoryId: z.string().cuid(),
   materialType: z.nativeEnum(MaterialType),
   description: z.string().trim().max(1000).optional().nullable(),
+  maintenanceStartDate: z.coerce.date().optional().nullable(),
+  maintenanceIntervalValue: z.coerce.number().int().min(1).max(9999).optional().nullable(),
+  maintenanceIntervalUnit: z.enum(MAINTENANCE_UNITS).optional().nullable(),
+  expirationDate: z.coerce.date().optional().nullable(),
 });
 
 export const materialUpdateSchema = materialCreateSchema.partial().extend({

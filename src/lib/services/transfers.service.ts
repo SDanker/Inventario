@@ -103,6 +103,7 @@ async function changeStatus(
   next: TransferStatus,
   ip?: string | null,
   extra?: Partial<{ approvedById: string; approvedAt: Date; receivedById: string; receivedAt: Date; rejectionReason: string }>,
+  beforeUpdate?: (transfer: { originUnitId: string }) => void,
 ) {
   return prisma.$transaction(async (tx) => {
     const transfer = await tx.transfer.findUnique({ where: { id } });
@@ -110,6 +111,7 @@ async function changeStatus(
     if (!expected.includes(transfer.status)) {
       throw new Error(`Transición no válida desde ${transfer.status} a ${next}`);
     }
+    beforeUpdate?.(transfer);
     const updated = await tx.transfer.update({ where: { id }, data: { status: next, ...extra } });
     await recordAudit(tx, {
       userId: user.id, action: `status:${next.toLowerCase()}`, tableName: "transfers", recordId: id,
@@ -117,6 +119,15 @@ async function changeStatus(
     });
     return { tx, transfer, updated };
   });
+}
+
+function requireOriginUnit(user: SessionUser, transfer: { originUnitId: string }) {
+  if (user.role === "COMANDANCIA_ADMIN") {
+    throw new ForbiddenError("Sólo la unidad de origen puede realizar esta acción");
+  }
+  if (user.unitId !== transfer.originUnitId) {
+    throw new ForbiddenError("Sólo la unidad de origen puede realizar esta acción");
+  }
 }
 
 export async function approveTransfer(user: SessionUser, id: string, ip?: string | null) {
@@ -127,11 +138,15 @@ export async function approveTransfer(user: SessionUser, id: string, ip?: string
 }
 export async function prepareTransfer(user: SessionUser, id: string, ip?: string | null) {
   requirePermission(user, "transfers.request"); // origen prepara
-  await changeStatus(user, id, [TransferStatus.APROBADO], TransferStatus.PREPARADO, ip);
+  await changeStatus(user, id, [TransferStatus.APROBADO], TransferStatus.PREPARADO, ip, undefined, (transfer) => {
+    requireOriginUnit(user, transfer);
+  });
 }
 export async function dispatchTransfer(user: SessionUser, id: string, ip?: string | null) {
   requirePermission(user, "transfers.request");
-  await changeStatus(user, id, [TransferStatus.PREPARADO], TransferStatus.EN_TRANSITO, ip);
+  await changeStatus(user, id, [TransferStatus.PREPARADO], TransferStatus.EN_TRANSITO, ip, undefined, (transfer) => {
+    requireOriginUnit(user, transfer);
+  });
 }
 export async function rejectTransfer(user: SessionUser, id: string, reason: string, ip?: string | null) {
   requirePermission(user, "transfers.reject");
@@ -141,7 +156,9 @@ export async function rejectTransfer(user: SessionUser, id: string, reason: stri
 }
 export async function cancelTransfer(user: SessionUser, id: string, ip?: string | null) {
   requirePermission(user, "transfers.request");
-  await changeStatus(user, id, [TransferStatus.SOLICITADO, TransferStatus.APROBADO, TransferStatus.PREPARADO], TransferStatus.CANCELADO, ip);
+  await changeStatus(user, id, [TransferStatus.SOLICITADO, TransferStatus.APROBADO, TransferStatus.PREPARADO], TransferStatus.CANCELADO, ip, undefined, (transfer) => {
+    requireOriginUnit(user, transfer);
+  });
 }
 
 /**

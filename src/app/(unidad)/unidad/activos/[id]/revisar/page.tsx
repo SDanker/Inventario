@@ -1,6 +1,10 @@
 import { notFound, redirect } from "next/navigation";
 import { getSessionUser } from "@/auth";
-import { getAssetWithReviews, submitAssetReview, setAssetReviewSchedule } from "@/lib/services/asset-reviews.service";
+import {
+  getAssetWithReviews,
+  submitAssetReview,
+  setAssetReviewSchedule,
+} from "@/lib/services/asset-reviews.service";
 import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/card";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -14,7 +18,11 @@ const statusConfig = {
   INOPERATIVA: { tone: "danger", label: "Inoperativa" },
 };
 
-export default async function AssetReviewPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function UnitAssetReviewPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = await params;
   const user = (await getSessionUser())!;
 
@@ -29,14 +37,18 @@ export default async function AssetReviewPage({ params }: { params: Promise<{ id
       status: formData.get("status") as "OK" | "CON_OBSERVACIONES" | "INOPERATIVA",
       comments: (formData.get("comments") as string) || null,
     });
-    redirect(`/admin/activos/${id}/revisar`);
+    redirect(`/unidad/activos/${id}/revisar`);
   }
 
   async function setScheduleAction(formData: FormData) {
     "use server";
     const u = (await getSessionUser())!;
     const intervalValue = parseInt(formData.get("intervalValue") as string);
-    const intervalUnit = formData.get("intervalUnit") as "days" | "weeks" | "months" | "years";
+    const intervalUnit = formData.get("intervalUnit") as
+      | "days"
+      | "weeks"
+      | "months"
+      | "years";
     const nextDateRaw = (formData.get("nextReviewDate") as string | null)?.trim() || null;
     const nextDate = nextDateRaw ? new Date(nextDateRaw) : null;
     await setAssetReviewSchedule(
@@ -46,14 +58,16 @@ export default async function AssetReviewPage({ params }: { params: Promise<{ id
       intervalUnit,
       nextDate && !Number.isNaN(nextDate.getTime()) ? nextDate : null,
     );
-    redirect(`/admin/activos/${id}/revisar`);
+    redirect(`/unidad/activos/${id}/revisar`);
   }
 
   return (
     <div className="max-w-4xl space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Revisar Activo</h1>
-        <a href="/admin/revisiones" className="text-sm text-slate-600 hover:underline">Volver</a>
+        <a href="/unidad/revisiones" className="text-sm text-slate-600 hover:underline">
+          Volver
+        </a>
       </div>
 
       <Card>
@@ -94,7 +108,9 @@ export default async function AssetReviewPage({ params }: { params: Promise<{ id
             {asset.nextReviewDate && (
               <div>
                 <p className="text-sm text-slate-600">Próxima revisión</p>
-                <p className="font-medium">{new Date(asset.nextReviewDate).toLocaleDateString("es-CL")}</p>
+                <p className="font-medium">
+                  {new Date(asset.nextReviewDate).toLocaleDateString("es-CL")}
+                </p>
               </div>
             )}
           </div>
@@ -119,13 +135,15 @@ export default async function AssetReviewPage({ params }: { params: Promise<{ id
                   const config = statusConfig[review.status as keyof typeof statusConfig];
                   return (
                     <TR key={review.id}>
-                      <TD>{new Date(review.reviewDate).toLocaleDateString("es-CL", {
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}</TD>
+                      <TD>
+                        {new Date(review.reviewDate).toLocaleDateString("es-CL", {
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </TD>
                       <TD>
                         <Badge tone={config.tone as any}>{config.label}</Badge>
                       </TD>
@@ -165,7 +183,12 @@ export default async function AssetReviewPage({ params }: { params: Promise<{ id
             </Field>
 
             <div className="flex gap-2 justify-end">
-              <a href="/admin/revisiones" className="text-sm self-center text-slate-600 hover:underline">Cancelar</a>
+              <a
+                href="/unidad/revisiones"
+                className="text-sm self-center text-slate-600 hover:underline"
+              >
+                Cancelar
+              </a>
               <Button type="submit">Registrar revisión</Button>
             </div>
           </form>

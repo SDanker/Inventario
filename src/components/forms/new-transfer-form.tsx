@@ -26,6 +26,7 @@ interface NewTransferFormProps {
   assets: AssetWithMaterial[];
   userRole: UserRole;
   userUnitId: string | null;
+  cancelHref: string;
 }
 
 export function NewTransferForm({
@@ -35,6 +36,7 @@ export function NewTransferForm({
   assets,
   userRole,
   userUnitId,
+  cancelHref,
 }: NewTransferFormProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const [items, setItems] = useState<TransferItem[]>([]);
@@ -193,7 +195,7 @@ export function NewTransferForm({
               />
             </Field>
 
-            <Button type="button" onClick={addItem} variant="info">
+            <Button type="button" onClick={addItem} variant="secondary">
               Agregar
             </Button>
           </div>
@@ -263,7 +265,7 @@ export function NewTransferForm({
 
       <div className="flex gap-2 justify-end">
         <a
-          href="/admin/traslados"
+          href={cancelHref}
           className="text-sm self-center text-slate-600 hover:underline"
         >
           Cancelar

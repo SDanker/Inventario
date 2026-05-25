@@ -9,3 +9,18 @@ html, body {
 body {
   @apply bg-slate-50 text-slate-900 antialiased;
 }
+
+@keyframes indeterminate-progress {
+  0%   { left: -40%; right: 100%; }
+  60%  { left: 100%; right: -40%; }
+  100% { left: 100%; right: -40%; }
+}
+
+.indeterminate-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: auto;
+  background-color: theme("colors.brand.600");
+  animation: indeterminate-progress 1.4s cubic-bezier(0.65, 0.05, 0.36, 1) infinite;
+}

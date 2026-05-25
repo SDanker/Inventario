@@ -8,6 +8,7 @@ const navItems: NavItem[] = [
   { href: "/unidad", label: "Dashboard" },
   { href: "/unidad/activos", label: "Activos" },
   { href: "/unidad/insumos", label: "Insumos" },
+  { href: "/unidad/revisiones", label: "Revisiones" },
   { href: "/unidad/movimientos", label: "Movimientos" },
   { href: "/unidad/mantenciones", label: "Mantenciones" },
   { href: "/unidad/traslados", label: "Traslados" },

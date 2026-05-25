@@ -3,6 +3,8 @@ import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, THead, TBody, TR, TH, TD, EmptyState } from "@/components/ui/table";
 import { formatDateTime } from "@/lib/utils";
 
+export const dynamic = "force-dynamic";
+
 export default async function AuditPage() {
   const logs = await prisma.auditLog.findMany({
     take: 200,

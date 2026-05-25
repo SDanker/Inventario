@@ -4,24 +4,18 @@ import { requestTransfer } from "@/lib/services/transfers.service";
 import { listUnits } from "@/lib/services/units.service";
 import { listMaterials } from "@/lib/services/catalog.service";
 import { prisma } from "@/lib/db";
-import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/card";
-import { Input, Select } from "@/components/ui/input";
-import { Label, Field } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
 import { NewTransferForm } from "@/components/forms/new-transfer-form";
 
-export default async function NewTransferPage() {
+export default async function NewUnitTransferPage() {
   const user = await getSessionUser();
   if (!user) redirect("/login");
+  if (!user.unitId) redirect("/forbidden");
 
   const units = await listUnits(user);
   const materials = await listMaterials(user);
 
-  // Obtener activos disponibles del usuario o su unidad
   const assets = await prisma.asset.findMany({
-    where: user.role === "COMANDANCIA_ADMIN"
-      ? undefined
-      : { unitId: user.unitId! },
+    where: { unitId: user.unitId },
     include: { material: true },
     orderBy: { internalCode: "asc" },
   });
@@ -34,7 +28,6 @@ export default async function NewTransferPage() {
     const destinationUnitId = formData.get("destinationUnitId") as string;
     const reason = formData.get("reason") as string;
 
-    // Parse items from formData (dynamic array)
     const itemsJson = formData.get("items_json") as string;
     const items = itemsJson ? JSON.parse(itemsJson) : [];
 
@@ -44,7 +37,7 @@ export default async function NewTransferPage() {
       items,
     });
 
-    redirect("/admin/traslados");
+    redirect("/unidad/traslados");
   }
 
   return (
@@ -57,7 +50,7 @@ export default async function NewTransferPage() {
         assets={assets}
         userRole={user.role}
         userUnitId={user.unitId}
-        cancelHref="/admin/traslados"
+        cancelHref="/unidad/traslados"
       />
     </div>
   );

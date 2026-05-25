@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(which node *)",
+      "Read(//usr/local/bin/**)",
+      "Read(//home/floppi2/.nvm/versions/**)",
+      "Bash(docker build *)",
+      "Bash(echo \"PATH: $PATH\"; echo \"---\"; ls /usr/local/bin/ | grep -E \"node|npm|npx\" 2>&1; echo \"---\"; ls /usr/bin/ | grep -E \"node|npm|npx\" 2>&1; echo \"---\"; find / -maxdepth 5 -name \"node\" -type f 2>/dev/null | head -5; echo \"---\"; find /home -maxdepth 4 -name \"node\" 2>/dev/null | head -5)",
+      "Read(//usr/bin/**)",
+      "Read(//home/**)",
+      "Read(//opt/**)",
+      "Read(//root/**)",
+      "Bash(apt list *)",
+      "Bash(dpkg -l)",
+      "Bash(docker --version)",
+      "Bash(docker exec *)",
+      "Bash(docker cp *)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:3000/api/health)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:3000/)",
+      "Bash(curl -s -o /tmp/page.html -w \"%{http_code}\\\\n\" \"http://localhost:3000/admin/materiales/cmpddbglt0004w5kd7vk7wnkx\")",
+      "Read(//tmp/**)",
+      "Bash(npx tsc *)",
+      "Bash(sudo -n ls /var/lib/postgresql)",
+      "Read(//var/lib/**)",
+      "Read(//etc/**)",
+      "Bash(systemctl is-active *)",
+      "Bash(pg_lsclusters)"
+    ]
+  }
+}

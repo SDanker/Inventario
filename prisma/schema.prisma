@@ -30,7 +30,6 @@ enum UnitType {
 }
 
 enum MaterialType {
-  MATERIAL_MAYOR
   MATERIAL_MENOR
   EPP
   EQUIPO_OPERATIVO
@@ -102,8 +101,11 @@ enum MaintenanceType {
 
 enum DocumentType {
   ORDEN_MANTENCION
+  ORDEN_REPARACION
   CERTIFICADO
   FACTURA
+  FACTURA_COMPRA
+  FACTURA_REPARACION
   INFORME_TECNICO
   ACTA_ENTREGA
   ACTA_BAJA
@@ -264,6 +266,12 @@ model Material {
   materialType MaterialType @map("material_type")
   description  String?
   active       Boolean      @default(true)
+  // Calendario de mantenciones periódicas del material (aplica a todos los activos del modelo).
+  maintenanceStartDate    DateTime? @map("maintenance_start_date")
+  maintenanceIntervalValue Int?     @map("maintenance_interval_value")
+  maintenanceIntervalUnit String?   @map("maintenance_interval_unit") // "days" | "weeks" | "months" | "quarters" | "years"
+  // Fecha de vencimiento sugerida del material (aplica a INSUMOs, opcional).
+  expirationDate           DateTime? @map("expiration_date")
   createdAt    DateTime     @default(now()) @map("created_at")
   updatedAt    DateTime     @updatedAt @map("updated_at")
 
@@ -274,6 +282,7 @@ model Material {
   images         MaterialImage[]
   serialNumbers  MaterialSerialNumber[]
   unitStocks     UnitMaterialStock[]
+  documents      Document[]
 
   @@index([materialType, active])
   @@map("materials")
@@ -437,6 +446,8 @@ model Document {
   asset               Asset?             @relation(fields: [assetId], references: [id])
   maintenanceRecordId String?            @map("maintenance_record_id")
   maintenanceRecord   MaintenanceRecord? @relation(fields: [maintenanceRecordId], references: [id])
+  materialId          String?            @map("material_id")
+  material            Material?          @relation(fields: [materialId], references: [id])
   documentType        DocumentType       @map("document_type")
   fileName            String             @map("file_name")
   filePath            String             @map("file_path")
@@ -450,6 +461,7 @@ model Document {
 
   movements InventoryMovement[]
 
+  @@index([materialId])
   @@map("documents")
 }
 

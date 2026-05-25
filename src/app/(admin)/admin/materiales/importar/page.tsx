@@ -5,10 +5,13 @@ import { MaterialType } from "@prisma/client";
 import { getSessionUser } from "@/auth";
 import { prisma } from "@/lib/db";
 import { createMaterial, assignMaterialToUnit } from "@/lib/services/catalog.service";
+import { can } from "@/lib/auth/permissions";
 import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Label } from "@/components/ui/label";
 import { Input, Textarea } from "@/components/ui/input";
+import { SubmitButton } from "@/components/forms/submit-button";
+import { FormProgress } from "@/components/forms/form-progress";
 
 type ImportRow = {
   line: number;
@@ -24,7 +27,6 @@ type ImportRow = {
 };
 
 const materialTypeLabels: Record<MaterialType, string> = {
-  MATERIAL_MAYOR: "Material mayor",
   MATERIAL_MENOR: "Material menor",
   EPP: "EPP",
   EQUIPO_OPERATIVO: "Equipo operativo",
@@ -171,8 +173,6 @@ function valueFrom(row: Map<string, string>, keys: string[]) {
 function parseMaterialType(value: string): MaterialType | null {
   const normalized = normalize(value);
   const aliases: Record<string, MaterialType> = {
-    MATERIAL_MAYOR: MaterialType.MATERIAL_MAYOR,
-    MAYOR: MaterialType.MATERIAL_MAYOR,
     MATERIAL_MENOR: MaterialType.MATERIAL_MENOR,
     MENOR: MaterialType.MATERIAL_MENOR,
     EPP: MaterialType.EPP,
@@ -193,17 +193,43 @@ async function importMaterialsAction(formData: FormData) {
   "use server";
   const user = await getSessionUser();
   if (!user) redirect("/login");
+  if (!can(user, "materials.write")) {
+    redirectWithImportError("No tienes permiso para importar materiales.");
+  }
 
   const file = formData.get("file") as File | null;
   const pastedCsv = formData.get("csv") as string | null;
   const hasFile = Boolean(file && file.size > 0);
   const fileName = file?.name.toLowerCase() ?? "";
-  const isExcelFile = hasFile && (fileName.endsWith(".xlsx") || file?.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  const fileText = hasFile && !isExcelFile ? await file!.text() : "";
-  const csvText = fileText || pastedCsv || "";
+  const isExcelFile =
+    hasFile &&
+    (fileName.endsWith(".xlsx") ||
+      file?.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+
+  let csvText = "";
+  if (hasFile && !isExcelFile) {
+    try {
+      csvText = await file!.text();
+    } catch {
+      redirectWithImportError("No se pudo leer el archivo. Verifica que sea un CSV válido.");
+    }
+  } else if (!hasFile) {
+    csvText = pastedCsv?.trim() ?? "";
+  }
 
   if (!hasFile && !csvText.trim()) {
     redirectWithImportError("Sube un archivo Excel/CSV o pega filas en el cuadro de texto.");
+  }
+
+  let parsedRows: { line: number; row: Map<string, string> }[] = [];
+  try {
+    parsedRows = isExcelFile && file ? await parseXlsx(file) : parseCsv(csvText);
+  } catch (error) {
+    redirectWithImportError(error instanceof Error ? error.message : "No se pudo leer el archivo.");
+  }
+
+  if (parsedRows.length === 0) {
+    redirectWithImportError("El archivo no contiene filas con datos.");
   }
 
   const categories = await prisma.category.findMany({ select: { id: true, name: true } });
@@ -215,13 +241,6 @@ async function importMaterialsAction(formData: FormData) {
       [normalize(unit.name), unit.id] as const,
     ]),
   );
-
-  let parsedRows: ReturnType<typeof parseCsv> = [];
-  try {
-    parsedRows = isExcelFile && file ? await parseXlsx(file) : parseCsv(csvText);
-  } catch (error) {
-    redirectWithImportError(error instanceof Error ? error.message : "No se pudo leer el archivo.");
-  }
 
   const importRows: ImportRow[] = [];
   const errors: string[] = [];
@@ -275,27 +294,37 @@ async function importMaterialsAction(formData: FormData) {
     redirectWithImportError(errors.slice(0, 6).join(" | "));
   }
 
-  for (const row of importRows) {
-    const created = await createMaterial(user, {
-      name: row.name,
-      brand: row.brand,
-      model: row.model,
-      partNumber: row.partNumber,
-      categoryId: row.categoryId,
-      materialType: row.materialType,
-      description: row.description,
-    });
-
-    if (row.unitId && row.quantity && row.quantity > 0) {
-      await assignMaterialToUnit(user, {
-        materialId: created.id,
-        unitId: row.unitId,
-        quantity: row.quantity,
+  let importedCount = 0;
+  try {
+    for (const row of importRows) {
+      const created = await createMaterial(user, {
+        name: row.name,
+        brand: row.brand,
+        model: row.model,
+        partNumber: row.partNumber,
+        categoryId: row.categoryId,
+        materialType: row.materialType,
+        description: row.description,
       });
+
+      if (row.unitId && row.quantity && row.quantity > 0) {
+        await assignMaterialToUnit(user, {
+          materialId: created.id,
+          unitId: row.unitId,
+          quantity: row.quantity,
+        });
+      }
+      importedCount++;
     }
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Error desconocido al guardar materiales.";
+    redirectWithImportError(
+      `Se importaron ${importedCount} de ${importRows.length} antes de fallar: ${message}`,
+    );
   }
 
-  redirect(`/admin/materiales?imported=${importRows.length}`);
+  redirect(`/admin/materiales?imported=${importedCount}`);
 }
 
 export default async function ImportMaterialsPage({
@@ -363,11 +392,13 @@ Casco estructural;Scott;AV-2100;SCT-AV2100;EPP;EPP;Casco para combate interior;B
           </CardBody>
         </Card>
 
+        <FormProgress label="Importando materiales..." />
+
         <div className="flex gap-2">
           <Link href="/admin/materiales">
             <Button type="button" variant="secondary">Cancelar</Button>
           </Link>
-          <Button type="submit">Importar materiales</Button>
+          <SubmitButton pendingLabel="Importando materiales...">Importar materiales</SubmitButton>
         </div>
       </form>
     </div>

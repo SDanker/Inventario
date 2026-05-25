@@ -1,7 +1,12 @@
 import { notFound, redirect } from "next/navigation";
 import { getSessionUser } from "@/auth";
 import { prisma } from "@/lib/db";
-import { approveTransfer, rejectTransfer, cancelTransfer, prepareTransfer, dispatchTransfer, receiveTransfer } from "@/lib/services/transfers.service";
+import {
+  cancelTransfer,
+  prepareTransfer,
+  dispatchTransfer,
+  receiveTransfer,
+} from "@/lib/services/transfers.service";
 import { TransferStatus } from "@prisma/client";
 import { Card, CardHeader, CardTitle, CardBody } from "@/components/ui/card";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
@@ -18,7 +23,11 @@ const statusConfig = {
   CANCELADO: { tone: "neutral", label: "Cancelado" },
 };
 
-export default async function TransferDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function UnitTransferDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = await params;
   const user = (await getSessionUser())!;
 
@@ -40,54 +49,56 @@ export default async function TransferDetailPage({ params }: { params: Promise<{
   });
 
   if (!transfer) notFound();
-
-  const canApprove = user.role === "COMANDANCIA_ADMIN" && transfer.status === TransferStatus.SOLICITADO;
-  const canReject = user.role === "COMANDANCIA_ADMIN" && (transfer.status === TransferStatus.SOLICITADO || transfer.status === TransferStatus.APROBADO);
-  const canCancel = user.unitId === transfer.originUnitId && (transfer.status === TransferStatus.SOLICITADO || transfer.status === TransferStatus.APROBADO || transfer.status === TransferStatus.PREPARADO);
-  const canPrepare = user.unitId === transfer.originUnitId && transfer.status === TransferStatus.APROBADO;
-  const canDispatch = user.unitId === transfer.originUnitId && transfer.status === TransferStatus.PREPARADO;
-  const canReceive = user.unitId === transfer.destinationUnitId && (transfer.status === TransferStatus.APROBADO || transfer.status === TransferStatus.PREPARADO || transfer.status === TransferStatus.EN_TRANSITO);
-
-  async function handleApprove() {
-    "use server";
-    const u = (await getSessionUser())!;
-    await approveTransfer(u, id);
-    redirect(`/admin/traslados/${id}`);
+  if (
+    transfer.originUnitId !== user.unitId &&
+    transfer.destinationUnitId !== user.unitId
+  ) {
+    notFound();
   }
 
-  async function handleReject() {
-    "use server";
-    const u = (await getSessionUser())!;
-    await rejectTransfer(u, id, "Rechazado por Comandancia");
-    redirect(`/admin/traslados/${id}`);
-  }
+  const canCancel =
+    user.unitId === transfer.originUnitId &&
+    (transfer.status === TransferStatus.SOLICITADO ||
+      transfer.status === TransferStatus.APROBADO ||
+      transfer.status === TransferStatus.PREPARADO);
+  const canPrepare =
+    user.unitId === transfer.originUnitId &&
+    transfer.status === TransferStatus.APROBADO;
+  const canDispatch =
+    user.unitId === transfer.originUnitId &&
+    transfer.status === TransferStatus.PREPARADO;
+  const canReceive =
+    user.unitId === transfer.destinationUnitId &&
+    (transfer.status === TransferStatus.APROBADO ||
+      transfer.status === TransferStatus.PREPARADO ||
+      transfer.status === TransferStatus.EN_TRANSITO);
 
   async function handleCancel() {
     "use server";
     const u = (await getSessionUser())!;
     await cancelTransfer(u, id);
-    redirect(`/admin/traslados/${id}`);
+    redirect(`/unidad/traslados/${id}`);
   }
 
   async function handlePrepare() {
     "use server";
     const u = (await getSessionUser())!;
     await prepareTransfer(u, id);
-    redirect(`/admin/traslados/${id}`);
+    redirect(`/unidad/traslados/${id}`);
   }
 
   async function handleDispatch() {
     "use server";
     const u = (await getSessionUser())!;
     await dispatchTransfer(u, id);
-    redirect(`/admin/traslados/${id}`);
+    redirect(`/unidad/traslados/${id}`);
   }
 
   async function handleReceive() {
     "use server";
     const u = (await getSessionUser())!;
     await receiveTransfer(u, id);
-    redirect(`/admin/traslados/${id}`);
+    redirect(`/unidad/traslados/${id}`);
   }
 
   const config = statusConfig[transfer.status as keyof typeof statusConfig];
@@ -105,11 +116,15 @@ export default async function TransferDetailPage({ params }: { params: Promise<{
           <div className="grid grid-cols-2 gap-4">
             <div>
               <p className="text-sm text-slate-600">Unidad origen</p>
-              <p className="font-medium">{transfer.originUnit.code} - {transfer.originUnit.name}</p>
+              <p className="font-medium">
+                {transfer.originUnit.code} - {transfer.originUnit.name}
+              </p>
             </div>
             <div>
               <p className="text-sm text-slate-600">Unidad destino</p>
-              <p className="font-medium">{transfer.destinationUnit.code} - {transfer.destinationUnit.name}</p>
+              <p className="font-medium">
+                {transfer.destinationUnit.code} - {transfer.destinationUnit.name}
+              </p>
             </div>
             <div>
               <p className="text-sm text-slate-600">Solicitado por</p>
@@ -117,9 +132,15 @@ export default async function TransferDetailPage({ params }: { params: Promise<{
             </div>
             <div>
               <p className="text-sm text-slate-600">Fecha solicitud</p>
-              <p className="font-medium">{new Date(transfer.createdAt).toLocaleDateString("es-CL", {
-                year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit"
-              })}</p>
+              <p className="font-medium">
+                {new Date(transfer.createdAt).toLocaleDateString("es-CL", {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </p>
             </div>
             {transfer.approvedBy && (
               <>
@@ -129,7 +150,11 @@ export default async function TransferDetailPage({ params }: { params: Promise<{
                 </div>
                 <div>
                   <p className="text-sm text-slate-600">Fecha aprobación</p>
-                  <p className="font-medium">{transfer.approvedAt ? new Date(transfer.approvedAt).toLocaleDateString("es-CL") : "—"}</p>
+                  <p className="font-medium">
+                    {transfer.approvedAt
+                      ? new Date(transfer.approvedAt).toLocaleDateString("es-CL")
+                      : "—"}
+                  </p>
                 </div>
               </>
             )}
@@ -141,7 +166,11 @@ export default async function TransferDetailPage({ params }: { params: Promise<{
                 </div>
                 <div>
                   <p className="text-sm text-slate-600">Fecha recepción</p>
-                  <p className="font-medium">{transfer.receivedAt ? new Date(transfer.receivedAt).toLocaleDateString("es-CL") : "—"}</p>
+                  <p className="font-medium">
+                    {transfer.receivedAt
+                      ? new Date(transfer.receivedAt).toLocaleDateString("es-CL")
+                      : "—"}
+                  </p>
                 </div>
               </>
             )}
@@ -178,7 +207,9 @@ export default async function TransferDetailPage({ params }: { params: Promise<{
                 <TR key={item.id}>
                   <TD>{item.assetId ? "Activo" : "Material"}</TD>
                   <TD className="font-mono">
-                    {item.asset ? `${item.asset.internalCode} - ${item.asset.material.name}` : item.material?.name}
+                    {item.asset
+                      ? `${item.asset.internalCode} - ${item.asset.material.name}`
+                      : item.material?.name}
                   </TD>
                   <TD>{Number(item.quantity)}</TD>
                   <TD>{item.notes || "—"}</TD>
@@ -189,21 +220,11 @@ export default async function TransferDetailPage({ params }: { params: Promise<{
         </CardBody>
       </Card>
 
-      {(canApprove || canReject || canCancel || canPrepare || canDispatch || canReceive) && (
+      {(canCancel || canPrepare || canDispatch || canReceive) && (
         <Card>
           <CardHeader><CardTitle>Acciones</CardTitle></CardHeader>
           <CardBody>
             <div className="flex flex-wrap gap-2">
-              {canApprove && (
-                <form action={handleApprove} className="inline">
-                  <Button type="submit" variant="primary">Aprobar traslado</Button>
-                </form>
-              )}
-              {canReject && (
-                <form action={handleReject} className="inline">
-                  <Button type="submit" variant="danger">Rechazar traslado</Button>
-                </form>
-              )}
               {canCancel && (
                 <form action={handleCancel} className="inline">
                   <Button type="submit" variant="secondary">Cancelar traslado</Button>
@@ -229,7 +250,9 @@ export default async function TransferDetailPage({ params }: { params: Promise<{
         </Card>
       )}
 
-      <a href="/admin/traslados" className="text-sm text-slate-600 hover:underline">← Volver al listado</a>
+      <a href="/unidad/traslados" className="text-sm text-slate-600 hover:underline">
+        ← Volver al listado
+      </a>
     </div>
   );
 }

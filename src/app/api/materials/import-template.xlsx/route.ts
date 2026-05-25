@@ -5,7 +5,6 @@ import { getSessionUser } from "@/auth";
 import { prisma } from "@/lib/db";
 
 const materialTypeLabels: Record<MaterialType, string> = {
-  MATERIAL_MAYOR: "Material mayor",
   MATERIAL_MENOR: "Material menor",
   EPP: "EPP",
   EQUIPO_OPERATIVO: "Equipo operativo",

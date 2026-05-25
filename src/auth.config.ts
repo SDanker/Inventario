@@ -34,7 +34,12 @@ export const authConfig = {
       const pathname = request.nextUrl.pathname;
 
       // Rutas públicas
-      if (pathname.startsWith("/api/auth") || pathname === "/login" || pathname === "/forbidden") {
+      if (
+        pathname.startsWith("/api/auth") ||
+        pathname === "/api/alerts/scan" ||
+        pathname === "/login" ||
+        pathname === "/forbidden"
+      ) {
         return true;
       }
       return isLoggedIn;

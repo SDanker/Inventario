@@ -93,9 +93,9 @@ async function main() {
   }
 
   const materials = [
-    { code: "MAT-001", name: "Carro bomba", brand: "Rosenbauer", model: "AT TL 3000 S", partNumber: "ROS-AT3000", categoryId: catMayor.id, materialType: MaterialType.MATERIAL_MAYOR },
-    { code: "MAT-002", name: "Carro aljibe", brand: "Pierce", model: "Impel", partNumber: "PRC-IMPEL", categoryId: catMayor.id, materialType: MaterialType.MATERIAL_MAYOR },
-    { code: "MAT-003", name: "Ambulancia", brand: "Mercedes", model: "Sprinter", partNumber: "MB-SPR220", categoryId: catMayor.id, materialType: MaterialType.MATERIAL_MAYOR },
+    { code: "MAT-001", name: "Carro bomba", brand: "Rosenbauer", model: "AT TL 3000 S", partNumber: "ROS-AT3000", categoryId: catMayor.id, materialType: MaterialType.EQUIPO_OPERATIVO },
+    { code: "MAT-002", name: "Carro aljibe", brand: "Pierce", model: "Impel", partNumber: "PRC-IMPEL", categoryId: catMayor.id, materialType: MaterialType.EQUIPO_OPERATIVO },
+    { code: "MAT-003", name: "Ambulancia", brand: "Mercedes", model: "Sprinter", partNumber: "MB-SPR220", categoryId: catMayor.id, materialType: MaterialType.EQUIPO_OPERATIVO },
     { code: "MAT-010", name: "Manguera 1½\"", brand: "Rubber-Fab", model: "Standard", partNumber: "RF-MAN15", categoryId: catMenor.id, materialType: MaterialType.MATERIAL_MENOR },
     { code: "MAT-011", name: "Pitón regulable", brand: "Akron", model: "Turbo Fog", partNumber: "AKR-TF200", categoryId: catMenor.id, materialType: MaterialType.MATERIAL_MENOR },
     { code: "MAT-020", name: "Casco estructural", brand: "Scott", model: "AV-2100", partNumber: "SCT-AV2100", categoryId: catEpp.id, materialType: MaterialType.EPP },

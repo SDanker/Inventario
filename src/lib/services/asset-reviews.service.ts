@@ -33,7 +33,7 @@ export async function getAssetWithReviews(user: SessionUser, assetId: string) {
 }
 
 export async function listAssetsNeedingReview(user: SessionUser) {
-  requirePermission(user, "assets.read");
+  if (user.role !== "COMANDANCIA_ADMIN") requirePermission(user, "assets.read.own");
 
   const now = new Date();
   const unitFilter =
@@ -60,7 +60,7 @@ export async function listAssetsNeedingReview(user: SessionUser) {
 }
 
 export async function submitAssetReview(user: SessionUser, input: z.infer<typeof assetReviewCreateSchema>, ip?: string | null) {
-  requirePermission(user, "assets.write");
+  requirePermission(user, "assets.write.own");
 
   const data = assetReviewCreateSchema.parse(input);
 
@@ -88,7 +88,7 @@ export async function submitAssetReview(user: SessionUser, input: z.infer<typeof
 
     // Calculate next review date if interval is set
     if (asset.reviewIntervalValue && asset.reviewIntervalUnit) {
-      const nextDate = new Date(asset.entryDate);
+      const nextDate = new Date();
       const unit = asset.reviewIntervalUnit;
       const value = asset.reviewIntervalValue;
 
@@ -127,9 +127,10 @@ export async function setAssetReviewSchedule(
   assetId: string,
   intervalValue: number,
   intervalUnit: "days" | "weeks" | "months" | "years",
+  nextReviewDateOverride?: Date | null,
   ip?: string | null
 ) {
-  requirePermission(user, "assets.write");
+  requirePermission(user, "assets.write.own");
 
   const asset = await prisma.asset.findUnique({
     where: { id: assetId },
@@ -142,16 +143,20 @@ export async function setAssetReviewSchedule(
     throw new ForbiddenError("No tienes permiso para actualizar este activo");
   }
 
-  // Calculate next review date from today
-  const nextDate = new Date();
-  if (intervalUnit === "days") {
-    nextDate.setDate(nextDate.getDate() + intervalValue);
-  } else if (intervalUnit === "weeks") {
-    nextDate.setDate(nextDate.getDate() + intervalValue * 7);
-  } else if (intervalUnit === "months") {
-    nextDate.setMonth(nextDate.getMonth() + intervalValue);
-  } else if (intervalUnit === "years") {
-    nextDate.setFullYear(nextDate.getFullYear() + intervalValue);
+  let nextDate: Date;
+  if (nextReviewDateOverride) {
+    nextDate = nextReviewDateOverride;
+  } else {
+    nextDate = new Date();
+    if (intervalUnit === "days") {
+      nextDate.setDate(nextDate.getDate() + intervalValue);
+    } else if (intervalUnit === "weeks") {
+      nextDate.setDate(nextDate.getDate() + intervalValue * 7);
+    } else if (intervalUnit === "months") {
+      nextDate.setMonth(nextDate.getMonth() + intervalValue);
+    } else if (intervalUnit === "years") {
+      nextDate.setFullYear(nextDate.getFullYear() + intervalValue);
+    }
   }
 
   return prisma.$transaction(async (tx) => {
@@ -169,6 +174,11 @@ export async function setAssetReviewSchedule(
       action: "set_review_schedule",
       tableName: "assets",
       recordId: assetId,
+      oldValue: {
+        intervalValue: asset.reviewIntervalValue,
+        intervalUnit: asset.reviewIntervalUnit,
+        nextReviewDate: asset.nextReviewDate,
+      },
       newValue: { intervalValue, intervalUnit, nextReviewDate: nextDate },
       ipAddress: ip,
     });

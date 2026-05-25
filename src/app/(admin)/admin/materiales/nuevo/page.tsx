@@ -24,12 +24,22 @@ async function createMaterialAction(formData: FormData) {
   const categoryId = formData.get("categoryId") as string;
   const materialType = formData.get("materialType") as MaterialType;
   const description = formData.get("description") as string;
+  const expirationDateStr = formData.get("expirationDate") as string | null;
   const imageFile = formData.get("image") as File | null;
   const serialNumber = formData.get("serialNumber") as string | null;
   const assignUnitId = formData.get("assignUnitId") as string | null;
   const assignQuantity = formData.get("assignQuantity") as string | null;
 
-  const created = await createMaterial(user, { name, brand, model: model || null, partNumber: partNumber || null, categoryId, materialType, description: description || null });
+  const created = await createMaterial(user, {
+    name,
+    brand,
+    model: model || null,
+    partNumber: partNumber || null,
+    categoryId,
+    materialType,
+    description: description || null,
+    expirationDate: materialType === "INSUMO" && expirationDateStr ? new Date(expirationDateStr) : null,
+  });
 
   // Agregar imagen si se proporciona
   if (imageFile && imageFile.size > 0) {
@@ -160,7 +170,6 @@ export default async function NewMaterialPage() {
               <Label htmlFor="materialType">Tipo de Material *</Label>
               <Select id="materialType" name="materialType" required>
                 <option value="">Selecciona un tipo</option>
-                <option value="MATERIAL_MAYOR">Material Mayor</option>
                 <option value="MATERIAL_MENOR">Material Menor</option>
                 <option value="EPP">EPP</option>
                 <option value="EQUIPO_OPERATIVO">Equipo Operativo</option>
@@ -172,6 +181,12 @@ export default async function NewMaterialPage() {
             <Field>
               <Label htmlFor="description">Descripción</Label>
               <Textarea id="description" name="description" maxLength={1000} placeholder="Descripción adicional del material..." />
+            </Field>
+
+            <Field>
+              <Label htmlFor="expirationDate">Fecha de vencimiento</Label>
+              <Input id="expirationDate" name="expirationDate" type="date" />
+              <p className="text-xs text-slate-500 mt-1">Opcional. Solo se guarda si el tipo es <b>Insumo</b>.</p>
             </Field>
           </CardBody>
         </Card>

@@ -56,7 +56,7 @@ const matrix: Record<UserRole, Set<Action>> = {
     "units.read.own",
     "categories.read",
     "materials.read",
-    "assets.read.own", "assets.write.own",
+    "assets.read.own", "assets.write.own", "assets.decommission",
     "consumables.read.own", "consumables.write.own",
     "movements.read.own", "movements.write", "movements.consume",
     "transfers.read.own", "transfers.request", "transfers.receive",
@@ -69,10 +69,10 @@ const matrix: Record<UserRole, Set<Action>> = {
   OPERATIONAL: new Set<Action>([
     "units.read.own",
     "materials.read",
-    "assets.read.own",
+    "assets.read.own", "assets.write.own",
     "consumables.read.own",
-    "movements.read.own", "movements.consume",
-    "alerts.read.own",
+    "movements.read.own", "movements.write", "movements.consume",
+    "alerts.read.own", "alerts.dismiss",
     "dashboard.unit",
   ]),
 };
