@@ -55,7 +55,7 @@ const matrix: Record<UserRole, Set<Action>> = {
   UNIT_MANAGER: new Set<Action>([
     "units.read.own",
     "categories.read",
-    "materials.read",
+    "materials.read", "materials.write",
     "assets.read.own", "assets.write.own", "assets.decommission",
     "consumables.read.own", "consumables.write.own",
     "movements.read.own", "movements.write", "movements.consume",

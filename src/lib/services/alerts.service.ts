@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { AlertStatus, AlertType, ConsumableStatus, MovementType, MovementStatus } from "@prisma/client";
+import { AlertStatus, AlertType, AssetStatus, ConsumableStatus, MovementType, MovementStatus } from "@prisma/client";
 import { requirePermission, ForbiddenError, type SessionUser } from "@/lib/auth/permissions";
 import { recordAudit } from "@/lib/audit";
 
@@ -12,6 +12,7 @@ import { recordAudit } from "@/lib/audit";
 export async function scanAlerts() {
   const now = new Date();
   const in30 = new Date(now.getTime() + 30 * 86400000);
+  const in7 = new Date(now.getTime() + 7 * 86400000);
   let created = 0;
 
   // 1. Insumos vencidos
@@ -61,6 +62,92 @@ export async function scanAlerts() {
     created += await upsertAlert(m.asset.unitId, { assetId: m.asset.id }, AlertType.MANTENCION_PROXIMA, `Mantención próxima: ${m.asset.internalCode}`, m.nextMaintenanceDate);
   }
 
+  // 6. Mantenciones periódicas configuradas en la ficha del material
+  const today = startOfDay(now);
+  const materialSchedules = await prisma.material.findMany({
+    where: {
+      active: true,
+      maintenanceStartDate: { not: null },
+      maintenanceIntervalValue: { not: null },
+      maintenanceIntervalUnit: { not: null },
+    },
+    include: {
+      assets: {
+        where: { status: { not: AssetStatus.DADO_DE_BAJA } },
+      },
+      unitStocks: {
+        where: { quantity: { gt: 0 } },
+      },
+    },
+  });
+  for (const material of materialSchedules) {
+    const dueDates = scheduledDatesToCheck(
+      material.maintenanceStartDate!,
+      material.maintenanceIntervalValue!,
+      material.maintenanceIntervalUnit!,
+      today,
+      startOfDay(in30),
+    );
+    if (dueDates.length === 0) continue;
+
+    for (const asset of material.assets) {
+      created += await upsertMaterialScheduleAlert(
+        asset.unitId,
+        `${asset.internalCode} (${material.name})`,
+        dueDates,
+        today,
+        { assetId: asset.id },
+      );
+    }
+
+    if (material.assets.length === 0) {
+      for (const stock of material.unitStocks) {
+        created += await upsertMaterialScheduleAlert(
+          stock.unitId,
+          `${material.code} (${material.name})`,
+          dueDates,
+          today,
+        );
+      }
+    }
+  }
+
+  // 7. Revisiones de activos vencidas
+  const overdueReviews = await prisma.asset.findMany({
+    where: {
+      nextReviewDate: { lte: now },
+      NOT: { nextReviewDate: null },
+    },
+    include: { material: true },
+  });
+  for (const asset of overdueReviews) {
+    created += await upsertAlert(
+      asset.unitId,
+      { assetId: asset.id },
+      AlertType.REVISION_VENCIDA,
+      `Revisión vencida: ${asset.internalCode} (${asset.material.name})`,
+      asset.nextReviewDate,
+    );
+  }
+
+  // 8. Revisiones de activos próximas a vencer
+  const upcomingReviews = await prisma.asset.findMany({
+    where: {
+      nextReviewDate: { gt: now, lte: in7 },
+      NOT: { nextReviewDate: null },
+    },
+    include: { material: true },
+  });
+  for (const asset of upcomingReviews) {
+    created += await upsertAlert(
+      asset.unitId,
+      { assetId: asset.id },
+      AlertType.REVISION_PROXIMA,
+      `Revisión próxima: ${asset.internalCode} (${asset.material.name})`,
+      asset.nextReviewDate,
+    );
+  }
+
   return { ok: true, created };
 }
 
@@ -71,11 +158,13 @@ async function upsertAlert(
   title: string,
   dueDate?: Date | null,
 ): Promise<number> {
+  const hasRef = Boolean(ref.consumableId || ref.assetId);
   const exists = await prisma.alert.findFirst({
     where: {
       unitId, alertType, status: AlertStatus.ABIERTA,
       ...(ref.consumableId ? { consumableId: ref.consumableId } : {}),
       ...(ref.assetId ? { assetId: ref.assetId } : {}),
+      ...(!hasRef ? { title } : {}),
     },
   });
   if (exists) return 0;
@@ -83,6 +172,53 @@ async function upsertAlert(
     data: { unitId, alertType, title, dueDate: dueDate ?? null, ...ref },
   });
   return 1;
+}
+
+async function upsertMaterialScheduleAlert(
+  unitId: string,
+  subject: string,
+  dueDates: Date[],
+  today: Date,
+  ref: { assetId?: string } = {},
+): Promise<number> {
+  const title = `Mantención programada: ${subject}`;
+  const legacyTitles = [
+    title,
+    `Mantención próxima: ${subject}`,
+    `Mantención vencida: ${subject}`,
+  ];
+
+  for (const dueDate of dueDates) {
+    const alertType = dueDate < today ? AlertType.MANTENCION_VENCIDA : AlertType.MANTENCION_PROXIMA;
+    const existing = await prisma.alert.findFirst({
+      where: {
+        unitId,
+        dueDate,
+        title: { in: legacyTitles },
+        ...(ref.assetId ? { assetId: ref.assetId } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (existing?.status === AlertStatus.ABIERTA) {
+      if (existing.alertType !== alertType || existing.title !== title) {
+        await prisma.alert.update({
+          where: { id: existing.id },
+          data: { alertType, title },
+        });
+      }
+      return 0;
+    }
+
+    if (existing) continue;
+
+    await prisma.alert.create({
+      data: { unitId, alertType, title, dueDate, ...ref },
+    });
+    return 1;
+  }
+
+  return 0;
 }
 
 /**
@@ -109,6 +245,13 @@ export async function acknowledgeAlert(
   const alert = await prisma.alert.findUnique({
     where: { id: alertId },
     include: {
+      asset: {
+        select: {
+          id: true,
+          reviewIntervalValue: true,
+          reviewIntervalUnit: true,
+        },
+      },
       consumable: { select: { id: true, materialId: true, unitId: true } },
     },
   });
@@ -129,6 +272,19 @@ export async function acknowledgeAlert(
           reviewedBy: user.id,
         },
       });
+
+      const isReviewAlert =
+        alert.alertType === AlertType.REVISION_VENCIDA ||
+        alert.alertType === AlertType.REVISION_PROXIMA;
+
+      if (isReviewAlert && alert.asset?.reviewIntervalValue && alert.asset.reviewIntervalUnit) {
+        await tx.asset.update({
+          where: { id: alert.assetId },
+          data: {
+            nextReviewDate: addInterval(new Date(), alert.asset.reviewIntervalValue, alert.asset.reviewIntervalUnit),
+          },
+        });
+      }
     } else if (alert.consumable) {
       await tx.inventoryMovement.create({
         data: {
@@ -160,4 +316,47 @@ export async function acknowledgeAlert(
 
     return updated;
   });
+}
+
+function addInterval(date: Date, value: number, unit: string) {
+  const next = new Date(date);
+  if (unit === "days") {
+    next.setDate(next.getDate() + value);
+  } else if (unit === "weeks") {
+    next.setDate(next.getDate() + value * 7);
+  } else if (unit === "months") {
+    next.setMonth(next.getMonth() + value);
+  } else if (unit === "quarters") {
+    next.setMonth(next.getMonth() + value * 3);
+  } else if (unit === "years") {
+    next.setFullYear(next.getFullYear() + value);
+  }
+  return next;
+}
+
+function scheduledDatesToCheck(startDate: Date, value: number, unit: string, today: Date, windowEnd: Date) {
+  if (value < 1 || !["days", "weeks", "months", "quarters", "years"].includes(unit)) return [];
+
+  const futureDates: Date[] = [];
+  let lastDueOrPast: Date | null = null;
+  let next = startOfDay(startDate);
+  let guard = 0;
+
+  while (next <= windowEnd && guard < 10000) {
+    if (next <= today) {
+      lastDueOrPast = next;
+    } else {
+      futureDates.push(next);
+    }
+    next = addInterval(next, value, unit);
+    guard += 1;
+  }
+
+  return lastDueOrPast ? [lastDueOrPast, ...futureDates] : futureDates;
+}
+
+function startOfDay(date: Date) {
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+  return start;
 }

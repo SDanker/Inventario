@@ -25,6 +25,11 @@ type UnitAssignmentOption = {
   code: string;
 };
 
+function serialErrorParam(error: unknown) {
+  const message = error instanceof Error ? error.message : "No se pudo guardar el número de serie.";
+  return encodeURIComponent(message.slice(0, 500));
+}
+
 async function updateMaterialAction(formData: FormData) {
   "use server";
   const user = await getSessionUser();
@@ -150,13 +155,17 @@ async function addSerialNumberAction(formData: FormData) {
   const assignedToUnitId = (formData.get("assignedToUnitId") as string) || null;
   const notes = (formData.get("notes") as string) || null;
 
-  await addMaterialSerialNumber(user, {
-    materialId,
-    serialNumber,
-    assignedToUserId,
-    assignedToUnitId,
-    notes,
-  }, null);
+  try {
+    await addMaterialSerialNumber(user, {
+      materialId,
+      serialNumber,
+      assignedToUserId,
+      assignedToUnitId,
+      notes,
+    }, null);
+  } catch (error) {
+    redirect(`/admin/materiales/${materialId}?serialError=${serialErrorParam(error)}`);
+  }
 }
 
 async function deleteSerialNumberAction(formData: FormData) {
@@ -247,8 +256,16 @@ async function deleteMaterialImageAction(formData: FormData) {
   revalidatePath(`/admin/materiales/${materialId}`);
 }
 
-export default async function EditMaterialPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function EditMaterialPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ serialError?: string }>;
+}) {
   const { id } = await params;
+  const query = await searchParams;
+  const serialError = query?.serialError;
   const user = (await getSessionUser())!;
 
   const material = await getMaterial(user, id);
@@ -488,6 +505,12 @@ export default async function EditMaterialPage({ params }: { params: Promise<{ i
           <CardTitle>Números de Serie ({serialNumbers.length}) {isOperational && "(Solo lectura)"}</CardTitle>
         </CardHeader>
         <CardBody className="space-y-4">
+          {serialError ? (
+            <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              {serialError}
+            </div>
+          ) : null}
+
           {!isOperational && (
           <form action={addSerialNumberAction} className="space-y-3 border-b pb-4">
             <input type="hidden" name="materialId" value={id} />

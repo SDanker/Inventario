@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
 import { requirePermission, type SessionUser, ForbiddenError } from "@/lib/auth/permissions";
 import { scopeByUnit, resolveTargetUnitId } from "@/lib/auth/scope";
+import { assertSerialNumberAvailable } from "@/lib/services/serial-numbers.service";
 
 export const assetCreateSchema = z.object({
   materialId: z.string().cuid(),
@@ -76,6 +77,7 @@ export async function createAsset(user: SessionUser, input: z.infer<typeof asset
   requirePermission(user, "assets.write.own");
   const data = assetCreateSchema.parse(input);
   const unitId = resolveTargetUnitId(user, data.unitId);
+  await assertSerialNumberAvailable(data.serialNumber);
 
   return prisma.$transaction(async (tx) => {
     const created = await tx.asset.create({ data: { ...data, unitId } });
@@ -105,6 +107,9 @@ export async function updateAsset(user: SessionUser, id: string, input: z.infer<
     if (!previous) throw new Error("Activo no encontrado");
     if (user.role !== "COMANDANCIA_ADMIN" && previous.unitId !== user.unitId) {
       throw new ForbiddenError("Activo de otra unidad");
+    }
+    if (data.serialNumber) {
+      await assertSerialNumberAvailable(data.serialNumber, { excludeAssetId: id });
     }
     // Cambio de unidad sólo vía traslado, no por edición directa.
     if (data.unitId && data.unitId !== previous.unitId) {

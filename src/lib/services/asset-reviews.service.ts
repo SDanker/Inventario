@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AlertStatus, AlertType } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
 import { requirePermission, type SessionUser, ForbiddenError } from "@/lib/auth/permissions";
@@ -108,6 +109,18 @@ export async function submitAssetReview(user: SessionUser, input: z.infer<typeof
         data: { nextReviewDate: nextDate },
       });
     }
+
+    await tx.alert.updateMany({
+      where: {
+        assetId: data.assetId,
+        status: AlertStatus.ABIERTA,
+        alertType: { in: [AlertType.REVISION_VENCIDA, AlertType.REVISION_PROXIMA] },
+      },
+      data: {
+        status: AlertStatus.RESUELTA,
+        description: "Resuelta automáticamente al registrar la revisión del activo.",
+      },
+    });
 
     await recordAudit(tx, {
       userId: user.id,

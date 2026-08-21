@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getSessionUser } from "@/auth";
 import { listCategories, createMaterial, addMaterialImage, addMaterialSerialNumber, assignMaterialToUnit, generateMaterialCode } from "@/lib/services/catalog.service";
+import { assertSerialNumberAvailable } from "@/lib/services/serial-numbers.service";
 import { getStorage } from "@/lib/storage";
 import { prisma } from "@/lib/db";
 import { MaterialType } from "@prisma/client";
@@ -11,6 +12,11 @@ import { Card, CardBody, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Label } from "@/components/ui/label";
 import { Input, Textarea, Select } from "@/components/ui/input";
+
+function serialErrorParam(error: unknown) {
+  const message = error instanceof Error ? error.message : "No se pudo guardar el número de serie.";
+  return encodeURIComponent(message.slice(0, 500));
+}
 
 async function createMaterialAction(formData: FormData) {
   "use server";
@@ -29,6 +35,16 @@ async function createMaterialAction(formData: FormData) {
   const serialNumber = formData.get("serialNumber") as string | null;
   const assignUnitId = formData.get("assignUnitId") as string | null;
   const assignQuantity = formData.get("assignQuantity") as string | null;
+  let serialError: string | null = null;
+  const cleanSerialNumber = serialNumber?.trim() || null;
+
+  if (cleanSerialNumber) {
+    try {
+      await assertSerialNumberAvailable(cleanSerialNumber);
+    } catch (err) {
+      redirect(`/admin/materiales/nuevo?serialError=${serialErrorParam(err)}`);
+    }
+  }
 
   const created = await createMaterial(user, {
     name,
@@ -62,14 +78,15 @@ async function createMaterialAction(formData: FormData) {
   }
 
   // Agregar número de serie si se proporciona
-  if (serialNumber && serialNumber.trim()) {
+  if (cleanSerialNumber) {
     try {
       await addMaterialSerialNumber(user, {
         materialId: created.id,
-        serialNumber: serialNumber.trim(),
+        serialNumber: cleanSerialNumber,
       });
     } catch (err) {
       console.error("Error al guardar número de serie:", err);
+      serialError = serialErrorParam(err);
     }
   }
 
@@ -89,12 +106,18 @@ async function createMaterialAction(formData: FormData) {
     }
   }
 
-  redirect(`/admin/materiales/${created.id}`);
+  redirect(`/admin/materiales/${created.id}${serialError ? `?serialError=${serialError}` : ""}`);
 }
 
-export default async function NewMaterialPage() {
+export default async function NewMaterialPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ serialError?: string }>;
+}) {
   const user = (await getSessionUser())!;
   const categories = await listCategories(user);
+  const query = await searchParams;
+  const serialError = query?.serialError;
 
   // Obtener unidades (admin ve todas, encargado solo ve su unidad)
   const isAdmin = user.role === "COMANDANCIA_ADMIN";
@@ -129,6 +152,12 @@ export default async function NewMaterialPage() {
       </div>
 
       <form action={createMaterialAction} className="space-y-4">
+        {serialError ? (
+          <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            {serialError}
+          </div>
+        ) : null}
+
         <Card>
           <CardHeader>
             <CardTitle>Información Básica</CardTitle>

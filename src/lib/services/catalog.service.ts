@@ -3,6 +3,7 @@ import { MaterialType } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
 import { requirePermission, type SessionUser } from "@/lib/auth/permissions";
+import { assertSerialNumberAvailable } from "@/lib/services/serial-numbers.service";
 
 // ── Categorías ────────────────────────────────────────────────
 
@@ -344,6 +345,7 @@ export async function addMaterialSerialNumber(user: SessionUser, input: z.infer<
   if (data.assignedToUserId && data.assignedToUnitId) {
     throw new Error("No se puede asignar a usuario y unidad simultáneamente");
   }
+  await assertSerialNumberAvailable(data.serialNumber);
   return prisma.$transaction(async (tx) => {
     const created = await tx.materialSerialNumber.create({ data });
     await recordAudit(tx, { userId: user.id, action: "create", tableName: "material_serial_numbers", recordId: created.id, newValue: created, ipAddress: ip });
@@ -356,6 +358,9 @@ export async function updateMaterialSerialNumber(user: SessionUser, serialNumber
   const data = materialSerialNumberUpdateSchema.parse(input);
   if (data.assignedToUserId && data.assignedToUnitId) {
     throw new Error("No se puede asignar a usuario y unidad simultáneamente");
+  }
+  if (data.serialNumber) {
+    await assertSerialNumberAvailable(data.serialNumber, { excludeMaterialSerialNumberId: serialNumberId });
   }
   return prisma.$transaction(async (tx) => {
     const previous = await tx.materialSerialNumber.findUnique({ where: { id: serialNumberId } });
